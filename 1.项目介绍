@@ -1,0 +1,607 @@
+HIMLoco 项目整体介绍
+
+  1. 项目是什么
+
+  这是上海 AI Lab(OpenRobotLab)的基于学习的足式机器人运动控制研究代码库,收录两篇工作:
+
+  - HIMLoco (Hybrid Internal Model,ICLR 2024) — 已开源训练代码,是本仓库的核心
+  - H-Infinity Locomotion Control (arXiv 2404.14405) — 目前只有 README,训练代码未发布
+
+  代码构建在 legged_gym + rsl_rl 之上(基于 ETH/NVIDIA 的 Isaac Gym 框架),作者在这两个库上做了定制修改。主要面向 Unitree 四足机器人(A1、Go1、Aliengo)。
+
+  2. 主训练任务
+
+  四足机器人的鲁棒运动控制(速度命令跟踪):机器人在各种地形(平/粗糙斜坡、上下楼梯、离散障碍)上,跟踪给定的 [lin_vel_x, lin_vel_y, ang_vel_yaw] 速度命令并保持稳定行走。
+
+  核心思想(HIM)源于经典的内模控制(IMC):不直接建模环境(高程图、摩擦、弹性等),而是把这些当作"扰动",通过机器人自身的响应去隐式估计。具体做法是只用关节编码器 + IMU
+  两类传感器,显式估计机器人速度,隐式地把系统响应编码成一个 latent embedding,策略网络据此完成鲁棒控制。
+
+  3. 用了什么框架
+
+  ┌──────────┬─────────────────────────────────────────────────────────────────────────────────────┐
+  │    层    │                                        内容                                         │
+  ├──────────┼─────────────────────────────────────────────────────────────────────────────────────┤
+  │ 仿真     │ Isaac Gym Preview 4,4096 个并行环境,trimesh 地形 + 课程学习(curriculum)             │
+  ├──────────┼─────────────────────────────────────────────────────────────────────────────────────┤
+  │ 环境     │ legged_gym(legged_robot.py 为基类),含丰富 domain randomization                      │
+  ├──────────┼─────────────────────────────────────────────────────────────────────────────────────┤
+  │ RL 算法  │ rsl_rl 中定制的 HIMPPO(在标准 PPO 上加了 estimator 更新),自适应学习率(按 KL 散度调) │
+  ├──────────┼─────────────────────────────────────────────────────────────────────────────────────┤
+  │ 训练入口 │ legged_gym/scripts/train.py,Runner 为 HIMOnPolicyRunner                             │
+  └──────────┴─────────────────────────────────────────────────────────────────────────────────────┘
+
+  PD 位置控制,action_scale=0.25,decimation=4,sim dt=0.005s。Domain randomization
+  非常全:负载质量、质心偏移、摩擦、电机强度、Kp/Kd、初始关节位、外部扰动力(±30N)、随机推力、动作延迟。
+
+  4. 观测(Observation)
+
+  观测分两套(非对称 actor-critic):
+
+  单步本体观测(num_one_step_observations = 45) — actor 用,只含可在真机获取的量:
+  commands[:3]      × scale   →  3   (vx, vy, ωyaw 命令)
+  base_ang_vel      × scale   →  3   (IMU 角速度)
+  projected_gravity           →  3   (IMU 重力方向)
+  dof_pos - default × scale   → 12   (关节角)
+  dof_vel           × scale   → 12   (关节角速度)
+  actions(上一步)            → 12
+                              ─────
+                                45
+  - Actor 实际输入的历史:6 帧堆叠 → num_observations = 45 × 6 = 270(供 estimator 提取时序信息)
+
+  单步特权观测(privileged,num = 45 + 3 + 3 + 187 = 238) — critic 用,额外加:
+  base_lin_vel      →   3   (真实线速度)
+  disturbance/外力  →   3   
+  height scan       → 187   (机器人周围地形高程,17×11 网格)
+
+  5. 网络结构
+
+  整体由 HIM 信息提取器(Estimator) + 策略/价值网络 组成。
+
+  (a) HIMEstimator(him_estimator.py)— 核心创新:
+  - Encoder:MLP [in → 128 → 64 → (16+3)],输入 6 帧历史观测(270 维),输出3 维速度估计 + 16 维 latent embedding(latent 做 L2 归一化)
+  - Target 网络:MLP [45 → 128 → 64 → 16],编码下一时刻观测,作为对比学习的正样本
+  - Prototype:nn.Embedding(32, 16),32 个原型向量
+  - 训练目标 = 速度估计损失 + 对比损失(swap loss):
+    - 速度:MSE(pred_vel, 真实 base_lin_vel)
+    - 对比:用 Sinkhorn-Knopp 算法在 encoder/target 输出与原型间做软聚类,交换预测目标(swapped prediction,类似 SwAV),用 batch 级信息抗噪声。这就是论文里"通过对比学习把
+  embedding 拉近到机器人后继状态"的实现。
+
+  (b) Actor(策略网络)(him_actor_critic.py):
+  - MLP [64 → 512 → 256 → 128 → 12],ELU 激活
+  - 输入 = 当前单步观测(45) + estimator 的速度(3) + latent(16) = 64 维
+  - 输出 12 维动作(关节目标角),高斯策略,可学习 std
+  - 注意:estimator 在 actor 前向时被 no_grad 冻结,二者分开优化
+
+  (c) Critic(价值网络):
+  - MLP [238 → 512 → 256 → 128 → 1],ELU 激活
+  - 输入完整特权观测,输出状态值(非对称训练,只在仿真用)
+
+  一句话总结
+
+  HIMLoco 用 Isaac Gym + 定制 PPO,在四足机器人上训练一个"只靠 IMU 和关节编码器"的运动控制策略;关键是一个 Hybrid Internal Model 估计器,显式回归机身速度、并用 Sinkhorn
+  对比学习提取一个隐式的"系统响应"latent,再把 观测+速度+latent 喂给 MLP 策略,从而在各种地形和扰动下实现鲁棒、敏捷的行走。
+
+  要我深入看某一部分(比如 reward 函数实现、Sinkhorn 对比学习细节、或 play/部署导出流程)吗?
+
+● 我已经完整通读了 HIMLoco 的全部源码(约 5400 行)。下面是逐文件、逐模块的完整源码解读。
+
+  仓库结构
+
+  HIMLoco/
+  ├── rsl_rl/        RL 算法库(定制版,核心创新 HIM 在这里)
+  ├── legged_gym/    Isaac Gym 环境库(机器人、地形、奖励)
+  └── projects/      两篇论文的说明(himloco / h_infinity)
+
+  代码分两套:HIM 专用实现(him_* 前缀)和它继承/复用的 legged_gym + rsl_rl 原版基线。训练实际走的是 HIM 那套,原版的 ppo.py / on_policy_runner.py /
+  actor_critic_recurrent.py / rollout_storage.py 都被 him_ 版本替换,未被使用(只是保留)。
+
+  ---
+  一、核心创新:HIM 估计器 him_estimator.py
+
+  这是整篇论文的灵魂。它把"内模控制"思想落地成一个网络。
+
+  三个子模块:
+  - encoder:[270 → 128 → 64 → (16+3)=19]。输入 6 帧历史观测,输出拆成前 3 维 = 速度估计、后 16 维 = latent embedding(L2 归一化)
+  - target:[45 → 128 → 64 → 16]。编码"下一时刻"的单步观测,作对比学习正样本
+  - proto:nn.Embedding(32, 16),32 个可学习原型向量
+
+  训练目标 update()(关键,第 76-116 行):
+  vel       = next_critic_obs[:, 45:48]      # 监督信号:真实 base_lin_vel
+  next_obs  = next_critic_obs[:, 3:48]       # 下一步单步观测(45维)
+  z_s = encoder(obs_history)  → pred_vel, z_s   # 当前历史 → 预测
+  z_t = target(next_obs)      → z_t             # 后继状态 → 目标
+  # 两者都对 32 个原型算相似度分数
+  score_s = z_s @ proto.T ;  score_t = z_t @ proto.T
+  q_s, q_t = sinkhorn(score_s), sinkhorn(score_t)   # 最优传输得软分配标签
+  swap_loss = -0.5*(q_s*log_p_t + q_t*log_p_s).mean()  # SwAV 式交换预测
+  estimation_loss = MSE(pred_vel, vel)
+  losses = estimation_loss + swap_loss
+  - 速度部分是显式监督回归(MSE)
+  - latent 部分用 Sinkhorn-Knopp 最优传输 + SwAV 交换对比 学习:用当前帧预测后继帧的聚类分配,反之亦然。这就是论文说的"把 embedding
+  拉近到机器人后继状态,响应被自然编码进去",用 batch 级信息抗噪。
+  - 注意 encoder(obs_history.detach())——estimator 的梯度不回传到策略,两者完全解耦优化。
+
+  sinkhorn()(119-133 行):3 次迭代的行列归一化,把相似度矩阵变成双随机的软分配矩阵。
+
+  ---
+  二、网络组装 him_actor_critic.py
+
+  非对称 Actor-Critic,内嵌一个 estimator。
+
+  Actor(64→512→256→128→12,ELU):
+  def update_distribution(self, obs_history):
+      with torch.no_grad():                          # estimator 冻结
+          vel, latent = self.estimator(obs_history)  # 3 + 16
+      actor_input = cat([obs_history[:, :45], vel, latent])  # 45+3+16 = 64
+      mean = self.actor(actor_input)
+      self.distribution = Normal(mean, std)          # std 是可学习参数
+  Actor 只吃当前单步观测(45) + 估计速度(3) + latent(16),不直接看 6 帧历史——历史只喂给 estimator。
+
+  Critic(238→512→256→128→1,ELU):直接吃完整特权观测,输出 state value。
+
+  RunningMeanStd / Normalization(39-72 行):Welford 在线均值方差归一化工具,这份代码里定义了但实际前向没启用。
+
+  ---
+  三、PPO 算法 him_ppo.py
+
+  标准 PPO + estimator 更新。update() 每个 minibatch 做两件独立的事:
+
+  # 1) 估计器自己更新(独立优化器、独立 backward)
+  estimation_loss, swap_loss = self.actor_critic.estimator.update(obs_batch, next_critic_obs_batch, lr)
+  # 2) 标准 PPO:clipped surrogate + clipped value loss + entropy
+  loss = surrogate_loss + value_loss_coef*value_loss - entropy_coef*entropy
+  - 自适应学习率:按 KL 散度调 lr(kl>2×desired 降速,<0.5× 增速),estimator 和 PPO 共用这个 lr。
+  - 时间截断 bootstrap:process_env_step 里 rewards += gamma * value * time_outs,超时不当真实终止。
+  
+  HIMRolloutStorage 相比原版多存了 next_critic_observations——这是 estimator 的监督信号来源(后继状态)。GAE 计算、minibatch 生成器都是标准实现。
+
+  ---
+  四、训练循环 him_on_policy_runner.py
+
+  for it in range(...):
+      with torch.inference_mode():          # rollout 阶段
+          for i in range(num_steps_per_env=100):
+              actions = alg.act(obs, critic_obs)
+              obs, priv_obs, ..., termination_ids, termination_priv_obs = env.step(actions)
+              next_critic_obs = critic_obs.clone()
+              next_critic_obs[termination_ids] = termination_priv_obs  # 终止帧用真实终止观测
+              alg.process_env_step(rewards, dones, infos, next_critic_obs)
+          alg.compute_returns(critic_obs)
+      alg.update()                          # 学习阶段
+  关键细节:终止环境的 next_critic_obs 被替换成"重置前的真实终止观测",避免 estimator 学到跨 episode 的错误后继状态。
+
+  save/load 同时保存 actor_critic、PPO 优化器、estimator 优化器三套状态。
+
+  ---
+  五、环境 legged_robot.py(1223 行,任务主体)
+
+  观测构造 compute_observations()(三个几乎相同的版本:常规/当前/终止):
+
+  单步观测 45 维(actor 可见,真机可获取):
+  commands[:3]·scale(3) + base_ang_vel·scale(3) + projected_gravity(3)
+  + (dof_pos-default)·scale(12) + dof_vel·scale(12) + actions(12) = 45
+  特权扩展(+193,仅 critic):+ base_lin_vel(3) + disturbance力(3) + height_scan(187) = 238
+
+  历史堆叠靠这一行滚动缓冲:
+  self.obs_buf = cat([current_obs[:, :45], self.obs_buf[:, :-45]])  # 新帧入,旧帧出
+  噪声只加在本体观测上(commands 和 actions 不加噪)。
+
+  控制 step() + _compute_torques():
+  - 动作延迟随机化:decimation=4 个子步内,动作从 last_action 渐变到 action,延迟步数随机
+  - PD:torque = Kp·Kp_factor·(target - q) - Kd·Kd_factor·dq,带电机强度/Kp/Kd 随机系数,最后 clip 到力矩上限
+  
+  Domain Randomization(论文鲁棒性的来源):
+  质量负载、质心偏移、摩擦、电机强度、Kp/Kd、初始关节位、外部扰动力(±30N,每 8 步)、随机推力(每 16s)、动作延迟。
+
+  奖励函数(18 个,1111-1222 行) 全在这里实现:
+  - 正向:tracking_lin_vel/tracking_ang_vel(exp(-err²/0.25))、feet_air_time
+  - 惩罚:lin_vel_z、ang_vel_xy、orientation、dof_acc、joint_power、base_height、foot_clearance(抬脚高度×横向速度)、action_rate、smoothness(二阶平滑)、collision、torques
+  、各种 limits
+
+  终止/课程:
+  - 终止:base 接触力 >1N,或超时
+  - 地形课程 _update_terrain_curriculum:走得远→升级难地形,走不够→降级("游戏式"课程)
+  - 命令课程 update_command_curriculum:跟踪奖励 >80% 上限时,扩大速度命令范围
+  - 命令采样:前 20% 环境是"高速环境",采更大 x 速度
+
+  ---
+  六、地形 terrain.py
+
+  Terrain 类生成高度场,7 种地形 + 难度课程(curiculum():行=难度递增,列=类型):
+  平滑斜坡、粗糙斜坡、上/下楼梯、离散障碍、踏脚石、缝隙(gap_terrain)、坑(pit_terrain)。trimesh 模式下转成三角网格。配置里 terrain_proportions=[0.1,0.2,0.3,0.3,0.1]
+  只启用前 5 种。
+
+  ---
+  七、部署导出 helpers.py::PolicyExporterHIM
+
+  真机部署的关键——把 estimator.encoder + actor 打包成一个 TorchScript:
+  def forward(self, obs_history):
+      parts = self.estimator(obs_history)[:, 0:19]   # encoder 输出
+      vel, z = parts[:, :3], parts[:, 3:]
+      z = F.normalize(z, p=2)
+      return self.actor(cat([obs_history[:, 0:45], vel, z]))   # 一步出动作
+  导出后是单个 policy.pt,真机上只需喂 6 帧历史观测即可,完全不需要 critic、不需要特权信息——这正是 HIM 的卖点:只靠 IMU+关节编码器。
+
+  ---
+  八、配置体系
+
+  - base_config.py:BaseConfig 递归把嵌套 class 转 namespace
+  - legged_robot_config.py:全局默认(LeggedRobotCfg 环境 + LeggedRobotCfgPPO 训练超参)
+  - a1/go1/aliengo_config.py:三款机器人各自覆盖 URDF、初始关节角、PD 增益、奖励权重
+    - 注意 a1/go1 用 action_scale=0.25,aliengo 用 0.5;aliengo 默认 hip 角全 0,a1/go1 有偏置
+  - 默认任务是 aliengo(get_args 里 --task default="aliengo")
+  - 训练规模:4096 环境 × 100 步/迭代,最多 200000 次迭代,gamma=0.99(注:him_ppo.py 默认 0.998 被 config 的 0.99 覆盖)
+
+  ---
+  关键数据流总结
+
+  仿真 → 45维单步观测 ──滚动──→ 270维历史(6帧)
+                                      │
+                    ┌─────────────────┤
+                    ▼                 ▼
+              estimator          [actor 当前帧45]
+           encoder(270→19)             │
+          ┌────┴────┐                  │
+       vel(3)   latent(16)─────────────┤
+          │  ▲       ▲                  ▼
+          │  │ Sinkhorn对比          actor(64→12) → 动作
+     MSE监督│  │ (vs target网络)         │
+          │  └──── next_obs ◄──────── 环境step
+          ▼
+     真实base_lin_vel(来自238维特权观测)
+
+  critic(238特权→1) ── 仅训练时用,部署丢弃
+
+  整个项目就是:用 estimator 把"6 帧历史"压缩成"速度+隐式系统响应",喂给一个轻量 MLP 策略,在 Isaac Gym 大规模并行 + 重度域随机化 + 地形课程下用 PPO 
+  训练,最终导出一个只依赖本体传感器的 TorchScript 策略上真机。
+
+  需要我针对某个具体机制(比如 Sinkhorn 的数学推导、域随机化对 sim-to-real 的作用、或部署时观测如何对齐)再深入讲解吗?
+
+
+  unitree_rl_mjlab 项目分析
+
+  一、项目定位
+
+  这是宇树(Unitree)机器人的强化学习训练框架,基于 mjlab 构建。技术栈与 HIMLoco 完全不同:
+
+  ┌────────────┬────────────────────────┬──────────────────────────────────────────────┐
+  │    维度    │        HIMLoco         │               unitree_rl_mjlab               │
+  ├────────────┼────────────────────────┼──────────────────────────────────────────────┤
+  │ 仿真引擎   │ Isaac Gym (Preview 4)  │ MuJoCo / mujoco_warp(GPU 加速)               │
+  ├────────────┼────────────────────────┼──────────────────────────────────────────────┤
+  │ 环境框架   │ legged_gym(硬编码 env) │ mjlab(Isaac Lab 风格的 Manager-Based 配置式) │
+  ├────────────┼────────────────────────┼──────────────────────────────────────────────┤
+  │ RL 库      │ 定制 rsl_rl(HIM 版)    │ 官方 rsl_rl(新版,TensorDict)                 │
+  ├────────────┼────────────────────────┼──────────────────────────────────────────────┤
+  │ 配置方式   │ Python class 继承      │ dataclass + tyro CLI                         │
+  ├────────────┼────────────────────────┼──────────────────────────────────────────────┤
+  │ 部署导出   │ TorchScript (.pt)      │ ONNX + C++ FSM                               │
+  ├────────────┼────────────────────────┼──────────────────────────────────────────────┤
+  │ 支持机器人 │ A1/Go1/Aliengo(四足)   │ Go2/A2/As2(四足)+ G1/R1/H1_2/H2(人形)        │
+  └────────────┴────────────────────────┴──────────────────────────────────────────────┘
+
+  核心架构是 mjlab 的 Manager-Based 环境:观测、动作、奖励、命令、事件、终止、课程全部拆成"管理器(Manager)"中的"项(Term)",每个 Term 是一个配置 + 一个函数。这与 HIMLoco
+  把所有逻辑塞进一个 LeggedRobot 巨类完全相反——这里是高度模块化、声明式的。
+
+  整个 src/ 几乎只有配置和 MDP 项函数,真正的训练引擎(env step、PPO、网络)都在已安装的 mjlab + rsl_rl 包里。
+
+  ---
+  二、训练任务(两类)
+
+  任务 1:速度跟踪(Velocity Tracking)— src/tasks/velocity/
+
+  主任务。机器人跟踪 twist 命令 [lin_vel_x, lin_vel_y, ang_vel_z](+ heading 模式),在粗糙地形 + 
+  课程上行走。可用任务:Unitree-Go2-Flat、Unitree-G1-Flat、Unitree-G1-23Dof-Flat、Unitree-H1_2-Flat、Unitree-A2-Flat、Unitree-R1-Flat。
+
+  命令生成(velocity_command.py):
+  - 均匀采样速度,小于 0.1 的命令清零
+  - heading_command:用航向误差 × 0.5 刚度反算 yaw 角速度
+  - 5% 环境是"站立环境"(命令清零),用于学站立
+  - 可选 init_velocity_prob:重置时直接给机器人赋初速度
+
+  任务 2:动作模仿(Motion Imitation / Tracking)— src/tasks/tracking/
+
+  BeyondMimic 的复现(基于 HybridRobotics/whole_body_tracking)。训练 G1 模仿参考动作序列(如舞蹈)。流程:CSV 动作 → csv_to_npz.py 转 npz → 训练时作为 motion
+  命令逐帧下发目标全身位姿。可用:Unitree-G1-Tracking-No-State-Estimation、Unitree-G1-23Dof-Tracking-No-State-Estimation。
+
+  ---
+  三、训练算法
+
+  标准 PPO(官方 rsl_rl 新版,rsl_rl/algorithms/ppo.py),不是 HIM 那种定制版。关键超参(G1 velocity):
+
+  clip_param=0.2, entropy_coef=0.01(tracking 0.005)
+  num_learning_epochs=5, num_mini_batches=4
+  learning_rate=1e-3, schedule="adaptive"(按 KL 自适应,desired_kl=0.01)
+  gamma=0.99, lam=0.95, max_grad_norm=1.0
+  value_loss_coef=1.0, use_clipped_value_loss=True
+  num_steps_per_env=24, max_iterations=10001(tracking 30001)
+
+  PPO 实现要点(和 HIM 的对比):
+  - clipped surrogate + clipped value loss + entropy,经典三件套
+  - 自适应 lr:KL>2× 降速、<0.5× 增速(与 HIMLoco 一致,这是 rsl_rl 家族通用)
+  - 超时 bootstrap:rewards += gamma * value * time_outs(同 HIM)
+  - 内置但本项目未启用:RND(随机网络蒸馏内在奖励)、Symmetry(对称数据增强/镜像损失)、多 GPU(all_reduce 梯度同步,本项目 --gpu-ids 走 torchrunx)
+  - actor 和 critic 用同一个 Adam(chain(actor.params, critic.params))联合优化——非对称观测但单优化器
+
+  GAE 计算、minibatch 生成在 RolloutStorage,逻辑与 HIM 版一致。
+
+  ---
+  四、网络结构
+
+  总体:非对称 Actor-Critic,纯 MLP(MLPModel)
+
+  两个独立 MLP,结构相同但输入不同(非对称):
+
+  Actor:  [obs_actor]  → Linear→ELU [512] → [256] → [128] → Linear[num_actions]
+  Critic: [obs_critic] → Linear→ELU [512] → [256] → [128] → Linear[1]
+
+  - 激活:ELU
+  - 观测归一化:EmpiricalNormalization(在线经验均值方差,obs_normalization=True)——内置在模型里,导出时一并带走,这点比 HIM 干净
+  - 动作分布:GaussianDistribution,std_type="scalar",init_std=1.0,状态无关的可学习标准差(nn.Parameter)。还提供了 HeteroscedasticGaussianDistribution(状态相关
+  std),本项目未用
+  - 与 HIMLoco 的根本差异:没有 estimator、没有历史堆叠、没有对比学习(history_length=1)。这是一个朴素的 MLP 策略,鲁棒性完全靠 domain randomization 和奖励塑形,而非 HIM
+  那种显式速度估计 + 隐式响应建模
+
+  观测组(velocity 任务,G1)
+
+  Actor 观测(enable_corruption=True,加均匀噪声):
+  base_ang_vel(IMU 角速度) + projected_gravity + command(twist)
+  + phase(步态相位,period=0.6) + joint_pos + joint_vel + last_action
+  + height_scan(地形高度扫描,rough 地形才有;flat 删除)
+
+  Critic 观测(enable_corruption=False,无噪声,特权):
+  = Actor 全部 + base_lin_vel(真实线速度) + foot_height + foot_air_time
+    + foot_contact + foot_contact_forces
+  非对称设计:critic 看到真实线速度和足部接触等特权信息,actor 看不到——和 HIMLoco 思路一致,但 HIM 还额外用 estimator 去"补"出 actor 缺失的速度,这里直接不补。
+
+  Tracking 任务观测额外含:motion_anchor_pos_b/ori_b(参考锚点在机体系的位姿误差)、command(逐帧动作目标),critic 还看 body_pos/ori(各 body 的位姿)。
+
+  动作
+
+  JointPositionActionCfg:输出关节位置目标(相对默认姿态偏移),use_default_offset=True。
+  - G1 的 action_scale 按执行器逐关节算:0.25 * effort_limit / stiffness,比 HIMLoco 固定 0.25 更物理
+  - decimation=4,sim timestep=0.005s → 控制频率 50Hz
+
+  ---
+  五、奖励结构(velocity,比 HIM 丰富很多)
+
+  跟踪项:track_linear_velocity、track_angular_velocity(exp(-err²/std²))
+
+  姿态/稳定:variable_posture(亮点:按速度分 standing/walking/running 三档,每关节不同 std
+  容忍度)、body_orientation_l2、body_ang_vel、angular_momentum(惩罚整体角动量→鼓励自然摆臂)
+
+  步态塑形:foot_gait(相位接触匹配,offset=[0,0.5] 对角步态)、foot_clearance(抬脚高度 0.1m)、foot_slip(接触时滑动)、soft_landing(落地冲击力)、feet_air_time
+
+  正则/惩罚:is_terminated(-200)、joint_acc_l2、joint_pos_limits、action_rate_l2、stand_still、self_collisions
+
+  Tracking 任务奖励全是模仿误差的指数项:全局根位姿、相对 body 位姿、body 线/角速度误差 + 关节限位、自碰撞。
+
+  ---
+  六、Domain Randomization & 课程
+
+  事件(Events):
+  - push_robot(interval,设速度扰动)、foot_friction(0.3~1.6)、base_com(质心偏移)、encoder_bias(关节编码器偏置 ±0.015)、reset_base/joints
+
+  终止:超时、bad_orientation(倾倒 >70°);tracking 任务加锚点位姿偏离阈值
+
+  课程(Curriculum):
+  - terrain_levels_vel:游戏式地形难度递进(走得远升级)
+  - commands_vel:分阶段扩大速度范围(step 0:±1 → step 120000:lin_x 到 2.0)
+
+  ---
+  七、训练→部署流程
+
+  1. train.py <task> --env.scene.num-envs=4096(tyro 解析,支持 --gpu-ids 多卡 torchrunx)
+  2. 训练中自动导出 policy.onnx(VelocityOnPolicyRunner.save 重写),把 obs_normalizer + MLP + 取均值打包,带元数据
+  3. tracking 任务额外导出 _OnnxMotionModel:策略 + 参考动作 buffer 一起打包,输入 (obs, time_step),输出动作 + 该帧参考全身状态
+  4. play.py MuJoCo 可视化验证
+  5. C++ 部署(deploy/robots/<robot>/):ONNX Runtime 推理 + FSM 状态机,先 unitree_mujoco 仿真部署,再上真机(CycloneDDS + unitree_sdk2)
+
+  ---
+  八、与 HIMLoco 的核心对比总结
+
+  ┌────────────┬───────────────────────────────────────────────────┬────────────────────────────────────┐
+  │            │                      HIMLoco                      │          unitree_rl_mjlab          │
+  ├────────────┼───────────────────────────────────────────────────┼────────────────────────────────────┤
+  │ 策略输入   │ 6 帧历史(270维)→ estimator                        │ 单帧观测(history=1)                │
+  ├────────────┼───────────────────────────────────────────────────┼────────────────────────────────────┤
+  │ 鲁棒性来源 │ HIM 估计器(显式估速度+对比学习隐式响应)+ 域随机化 │ 纯域随机化 + 丰富奖励塑形          │
+  ├────────────┼───────────────────────────────────────────────────┼────────────────────────────────────┤
+  │ 网络       │ estimator + actor MLP + critic                    │ actor MLP + critic MLP(更朴素)     │
+  ├────────────┼───────────────────────────────────────────────────┼────────────────────────────────────┤
+  │ 算法       │ PPO + estimator 联合更新(双优化器)                │ 标准 PPO(单优化器)                 │
+  ├────────────┼───────────────────────────────────────────────────┼────────────────────────────────────┤
+  │ 任务       │ 仅速度跟踪                                        │ 速度跟踪 + 动作模仿                │
+  ├────────────┼───────────────────────────────────────────────────┼────────────────────────────────────┤
+  │ 工程化     │ 单体类、硬编码                                    │ 高度模块化、配置式、多机器人多任务 │
+  └────────────┴───────────────────────────────────────────────────┴────────────────────────────────────┘
+
+  一句话:HIMLoco 用算法创新(HIM)解决部分可观测问题;unitree_rl_mjlab 用工程框架(mjlab manager 化)+ 精细奖励塑形 + 强域随机化,在更现代的 MuJoCo/ONNX 
+  栈上覆盖更多机器人和任务,但策略网络本身回归到朴素的非对称 MLP+PPO。
+
+  需要我深入某部分吗?比如 mjlab 的 Manager 机制如何驱动 env.step、variable_posture 三档步态奖励的设计、或 tracking 任务的 motion command 逐帧调度细节。
+
+/plan 现在了解了两个项目，接下来你需要作为一个算法迁移的专家（可以分配一些subagent负责迁移的不同部分的工作），完成我的算法迁移需求，
+    himloco里的核心算法迁移到unitree_rl_mjlab中，增量的方式迁移（unitree_rl_mjlab原来的一些算法要能正常使用），
+    迁移原因是himloco是在leggedgym仿真平台训练的，unitree_rl_mjlab是在mjlab平台训练的，后者的训练更高效。关于迁移的步骤，你要提炼出需要迁移哪些组件，
+    以及需要重构哪些配置，以及规划如何迁移，并且还要自查迁移完成后是否存在什么bug。然后最后给我你完成了哪些迁移的任务，以及训练的和play的命令也给我。
+
+
+
+  g1 训练 & Play 命令
+
+  训练(平地,HIM):
+  python scripts/train.py Unitree-G1-HIM-Flat --env.scene.num-envs=4096
+  训练(粗糙地形,HIM):
+  python scripts/train.py Unitree-G1-HIM-Rough --env.scene.num-envs=4096
+  多卡:
+  python scripts/train.py Unitree-G1-HIM-Flat --gpu-ids 0 1 --env.scene.num-envs=4096
+  Play(可视化验证,自动导出 policy.onnx):
+  python scripts/play.py Unitree-G1-HIM-Flat --checkpoint_file=logs/rsl_rl/g1_him_velocity/2026-06-19_15-41-59/model_300.pt
+
+  go2 
+
+  ---
+  训练 & Play 命令
+
+  # 平地
+  python scripts/train.py Unitree-Go2-HIM-Flat --env.scene.num-envs=4096
+
+  # 粗糙地形
+  python scripts/train.py Unitree-Go2-HIM-Rough --env.scene.num-envs=4096
+
+  # Play
+  python scripts/play.py Unitree-Go2-HIM-Rough \
+    --checkpoint_file=logs/rsl_rl/go2_him_velocity/2026-06-19_16-51-53/model_5900.pt
+
+
+● 结论：Actor + Estimator 完全相同，Critic 输入维度不同
+
+  完整网络结构对比
+
+  Estimator（两个任务完全一致）
+
+  编码器 Encoder:  282 → 128 → 64 → 19  (前3维=vel, 后16维=latent)
+  目标网络 Target:  47  → 128 → 64 → 16
+  原型 Prototype:  Embedding(32, 16)
+  激活函数: ELU
+
+  Actor MLP（两个任务完全一致）
+
+  输入构成: current(47) + est_vel(3) + latent(16) = 66
+  结构: 66 → 512 → 256 → 128 → 12
+  激活: ELU，最后一层线性
+  输出: 12维关节目标角（Go2共12个关节）
+
+  Critic MLP（唯一差异在第一层输入宽度）
+
+  ┌────────┬─────────────────────┬─────────────────────────────┐
+  │        │        Flat         │            Rough            │
+  ├────────┼─────────────────────┼─────────────────────────────┤
+  │ 第一层 │ Linear(74 → 512)    │ Linear(261 → 512)           │
+  ├────────┼─────────────────────┼─────────────────────────────┤
+  │ 后续层 │ 512 → 256 → 128 → 1 │ 512 → 256 → 128 → 1（相同） │
+  └────────┴─────────────────────┴─────────────────────────────┘
+
+  Critic 输入维度差异来源：Rough 的特权观测组比 Flat 多了地形高度扫描（height_scan）以及部分接触相关项，Flat 地形无高度场所以这些项被删除。
+
+  ---
+  完整数据流图（两个任务通用）
+
+  proprio_history (282 = 47×6帧)
+          │
+          ▼
+    Estimator Encoder (282→128→64→19)
+          │
+     ┌────┴────┐
+    vel(3)  latent(16)    proprio_current(47)
+          │                     │
+          └──────────┬───────────┘
+                     ▼
+             Actor MLP input (66 = 47+3+16)
+             [66 → 512 → 256 → 128 → 12]  → 12维动作
+
+  estimator_vel(3, 真实线速度) ──► Estimator 速度回归损失 (MSE)
+  next_proprio_current(47)    ──► Estimator 对比学习损失 (SwAV)
+
+  critic观测 (74 或 261)
+          │
+    Critic MLP  [74/261 → 512 → 256 → 128 → 1]  → state value（仅训练用）
+
+  ---
+  一句话总结
+
+  两个任务的 Actor + Estimator（部署时真正用到的全部网络）完全相同，无论 Flat 还是 Rough 训练出来的模型都可以用同一套网络结构在真机上部署。Critic 的第一层从 74 扩到
+  261，是因为 Rough 的 critic 多看了地形高度扫描等特权信息辅助训练，这部分仅在仿真训练时使用，部署时丢弃。
+
+
+● 推理过程完整分析
+
+  1. 推理时不需要高程图输入
+  
+  play 时 critic 组虽然仍包含 height_scan，但 get_inference_policy 只返回 actor，critic 在推理阶段完全不参与计算。actor 的 obs_groups = ('proprio_history',)，这个组的 7
+  个 term 全是纯本体感知，没有任何地形感知项：
+
+  proprio_history / proprio_current 的 7 个 term：
+    base_ang_vel        ← IMU 角速度
+    projected_gravity   ← IMU 重力方向
+    command             ← 速度指令
+    phase               ← 步态相位
+    joint_pos           ← 关节角度
+    joint_vel           ← 关节速度
+    actions             ← 上一步动作
+
+  高程图（height_scan）只存在于 critic 组，推理时根本不会被读取。
+
+  ---
+  2. 推理时起作用的网络：只有两个
+
+  play 时的完整推理调用链如下：
+
+  env.step() 返回观测
+          │
+          ▼
+  obs["proprio_history"]  (shape: [N, 282])
+          │
+          ▼
+  ① Estimator.encoder                     ← 第一个起作用的网络
+     282 → 128 → 64 → 19(ELU)
+          │
+     ┌────┴────┐
+    vel(3)  latent(16)
+          │
+  obs["proprio_current"] (shape: [N, 47])
+          │                     │
+          └──────────┬───────────┘
+                     ▼
+             concat → [66]
+                     │
+                     ▼
+  ② Actor MLP                             ← 第二个起作用的网络
+     66 → 512 → 256 → 128 → 12(Linear)
+                     │
+                     ▼
+             12维关节目标角 → 执行
+
+  ┌──────────────────────┬──────────────────┬─────────────────────────────────────────┐
+  │         网络         │ 推理时是否起作用 │                  原因                   │
+  ├──────────────────────┼──────────────────┼─────────────────────────────────────────┤
+  │ Estimator encoder    │ ✅ 是            │ 将6帧历史压缩为vel(3)+latent(16)        │
+  ├──────────────────────┼──────────────────┼─────────────────────────────────────────┤
+  │ Actor MLP            │ ✅ 是            │ 将[current+vel+latent]映射为动作        │
+  ├──────────────────────┼──────────────────┼─────────────────────────────────────────┤
+  │ Estimator target网络 │ ❌ 否            │ 只在训练时提供对比学习监督信号          │
+  ├──────────────────────┼──────────────────┼─────────────────────────────────────────┤
+  │ Estimator prototypes │ ❌ 否            │ 只在训练时计算SwAV分配                  │
+  ├──────────────────────┼──────────────────┼─────────────────────────────────────────┤
+  │ Critic MLP           │ ❌ 否            │ 只在训练时估计state value，play时不调用 │
+  └──────────────────────┴──────────────────┴─────────────────────────────────────────┘
+
+  ---
+  3. 总结一句话
+  
+  play 推理时只用两个网络：Estimator encoder 和 Actor MLP，两者合起来就是导出的 policy.onnx。输入只需要纯本体感知（IMU + 关节编码器 +
+  指令），不需要任何地形感知，高程图对推理不可见。 这正是 HIM "最少传感器"设计的核心价值——在粗糙地形上训练，在真机上只用 IMU + 关节编码器就能部署。
+
+
+
+迁移
+❯ /plan 现在我有一个新的机器人,'/home/dream/wkl/boying_description'文件夹里包含了模型的配置文件,现在需要将这个机器人迁移到'/home/dream/wkl/unitree_rl_mjlab'中,并且用和
+  Unitree-Go2-HIM-Rough任务一样的算法进行训练,总结一点就是除了和Unitree-Go2-HIM-Rough任务采用的机器人不一样,其他都一样,boying机器人的一些参数配置(机器人关节限位,初始位
+  置,初始配置,电机配置存放在'/home/dream/wkl/关节名轴MJCF限位rad力矩限位.txt'文件下面,可能需要专门配置),然后注意一点关于碰撞体,boying多了几个碰撞体,也请留意这些碰撞体
+  如何配置.请做好记得修改计划,然后一步步完成.
+
+
+训练
+# 粗糙地形（推荐，对应 Boying-HIM-Rough）
+python scripts/train.py Boying-HIM-Rough --env.scene.num-envs=4096
+
+# 平地
+python scripts/train.py Boying-HIM-Flat --env.scene.num-envs=4096
+
+Play（可视化验证，替换 checkpoint 路径）
+python scripts/play.py Boying-HIM-Rough \
+  --checkpoint_file=logs/rsl_rl/boying_him_velocity/2026-06-21_13-18-06/model_280.pt
+
+多卡的话加 --gpu-ids 0 1：
+python scripts/train.py Boying-HIM-Rough --gpu-ids 0 1 --env.scene.num-envs=4096
