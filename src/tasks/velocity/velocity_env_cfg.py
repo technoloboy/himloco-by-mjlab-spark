@@ -194,15 +194,27 @@ def make_velocity_env_cfg() -> ManagerBasedRlEnvCfg:
           "z": (0.0, 0.0),
           "yaw": (-3.14, 3.14),
         },
-        "velocity_range": {},
+        # Randomize initial base velocity, matching HIMLoco's uniform(−0.5, 0.5)
+        # across all 6 DOF (lin_vel xyz + ang_vel rpy).
+        "velocity_range": {
+          "x":     (-0.5, 0.5),
+          "y":     (-0.5, 0.5),
+          "z":     (-0.5, 0.5),
+          "roll":  (-0.5, 0.5),
+          "pitch": (-0.5, 0.5),
+          "yaw":   (-0.5, 0.5),
+        },
       },
     ),
     "reset_robot_joints": EventTermCfg(
       func=mdp.reset_joints_by_offset,
       mode="reset",
       params={
-        "position_range": (-0.0, 0.0),
-        "velocity_range": (-0.0, 0.0),
+        # HIMLoco randomizes joint pos as default_pos * uniform(0.5, 1.5).
+        # reset_joints_by_offset is additive; ±0.3 rad is a reasonable
+        # approximation that covers the typical variation at all joints.
+        "position_range": (-0.3, 0.3),
+        "velocity_range": (-0.0, 0.0),  # HIMLoco zeros joint velocities on reset.
         "asset_cfg": SceneEntityCfg("robot", joint_names=(".*",)),
       },
     ),
@@ -250,6 +262,32 @@ def make_velocity_env_cfg() -> ManagerBasedRlEnvCfg:
           1: (-0.05, 0.05),
           2: (-0.05, 0.05),
         },
+      },
+    ),
+    # Randomize the payload mass of the base link, matching HIMLoco's
+    # payload_mass_range = [−1, 2] kg applied per reset.
+    # body_mass(operation="add") models a point mass at the CoM, leaving
+    # the inertia tensor unchanged — physically appropriate for a payload.
+    # Body name must be set per-robot (e.g. "base_link" for Go2).
+    "payload_mass": EventTermCfg(
+      mode="reset",
+      func=dr.body_mass,
+      params={
+        "asset_cfg": SceneEntityCfg("robot", body_names=()),  # Set per-robot.
+        "operation": "add",
+        "ranges": (-1.0, 2.0),
+      },
+    ),
+    # Randomize PD gains by ±10%, matching HIMLoco's kp_range / kd_range = [0.9, 1.1].
+    # Targets all actuators of the robot (actuator_ids=slice(None) by default).
+    "pd_gains": EventTermCfg(
+      mode="reset",
+      func=dr.pd_gains,
+      params={
+        "asset_cfg": SceneEntityCfg("robot"),
+        "kp_range": (0.9, 1.1),
+        "kd_range": (0.9, 1.1),
+        "operation": "scale",
       },
     ),
   }
