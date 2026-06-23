@@ -174,6 +174,7 @@ def feet_clearance(
   vel_norm = torch.norm(foot_vel_xy, dim=-1)  # [B, N]
   delta = torch.abs(foot_z - target_height)  # [B, N]
   cost = torch.sum(delta * vel_norm, dim=1)  # [B]
+  cost = cost.clamp(max=2.0)  # prevent gradient spikes on rough terrain
   if command_name is not None:
     command = env.command_manager.get_command(command_name)
     if command is not None:
