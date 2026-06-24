@@ -86,6 +86,12 @@ class HIMPPO(PPO):
       mean_swap /= n
     return mean_est, mean_swap
 
+  def compute_returns(self, obs) -> None:
+    super().compute_returns(obs)
+    # Clamp returns to prevent a single high-bootstrap episode from corrupting
+    # the critic's EmpiricalNormalization via a catastrophic value loss spike.
+    self.storage.returns.clamp_(-50.0, 50.0)
+
   def update(self) -> dict[str, float]:
     est_loss, swap_loss = self._update_estimator()
     loss_dict = super().update()
