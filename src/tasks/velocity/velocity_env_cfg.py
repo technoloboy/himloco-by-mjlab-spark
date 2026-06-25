@@ -133,7 +133,7 @@ def make_velocity_env_cfg() -> ManagerBasedRlEnvCfg:
     ),
     "phase": ObservationTermCfg(
       func=mdp.phase,
-      params={"period": 0.6, "command_name": "twist"},
+      params={"period": 0.5, "command_name": "twist"},
     ),
     "joint_pos": ObservationTermCfg(
       func=mdp.joint_pos_rel,
@@ -401,21 +401,20 @@ def make_velocity_env_cfg() -> ManagerBasedRlEnvCfg:
       weight=-2e-5,
       params={"asset_cfg": SceneEntityCfg("robot", joint_names=".*")},
     ),
-    "foot_gait": RewardTermCfg(
-      func=mdp.feet_gait,
+    "energy_efficiency": RewardTermCfg(
+      func=mdp.energy_efficiency,
       weight=0.5,
       params={
-        "period": 0.6,
-        "offset": [0.0, 0.5],
-        "threshold": 0.56,
-        "command_threshold": 0.1,
+        "asset_cfg": SceneEntityCfg("robot", joint_names=".*"),
         "command_name": "twist",
-        "sensor_name": "feet_ground_contact",
-      }
+        "sigma_x": 300.0,
+        "sigma_z": 150.0,
+        "eps": 1.0,
+      },
     ),
     "foot_clearance": RewardTermCfg(
       func=mdp.feet_clearance,
-      weight=-0.1,
+      weight=-0.15,
       params={
         "target_height": 0.10,
         "command_name": "twist",

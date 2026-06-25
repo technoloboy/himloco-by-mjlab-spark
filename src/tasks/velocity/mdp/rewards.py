@@ -408,6 +408,44 @@ class variable_posture:
     return torch.exp(-torch.mean(error_squared / (std**2), dim=1))
 
 
+class energy_efficiency:
+  """Reward energy-efficient locomotion; trot emerges as energy-optimal gait.
+
+  reward = exp(-P / (sigma_x * |vx_cmd| + sigma_z * |wz_cmd| + eps))
+  P = sum(clamp(tau * qd, min=0)) — positive mechanical power only.
+  """
+
+  def __init__(self, cfg: RewardTermCfg, env: ManagerBasedRlEnv):
+    asset: Entity = env.scene[cfg.params["asset_cfg"].name]
+    joint_ids, _ = asset.find_joints(cfg.params["asset_cfg"].joint_names)
+    actuator_ids, _ = asset.find_actuators(cfg.params["asset_cfg"].joint_names)
+    self._joint_ids = torch.tensor(joint_ids, device=env.device, dtype=torch.long)
+    self._actuator_ids = torch.tensor(actuator_ids, device=env.device, dtype=torch.long)
+
+  def __call__(
+    self,
+    env: ManagerBasedRlEnv,
+    asset_cfg: SceneEntityCfg,
+    command_name: str,
+    sigma_x: float = 300.0,
+    sigma_z: float = 150.0,
+    eps: float = 1.0,
+  ) -> torch.Tensor:
+    asset: Entity = env.scene[asset_cfg.name]
+    command = env.command_manager.get_command(command_name)
+    assert command is not None
+
+    tau = asset.data.actuator_force[:, self._actuator_ids]
+    qd = asset.data.joint_vel[:, self._joint_ids]
+    power = torch.sum(torch.clamp(tau * qd, min=0.0), dim=1)  # [B]
+
+    vx_abs = torch.abs(command[:, 0])
+    wz_abs = torch.abs(command[:, 2])
+    denom = sigma_x * vx_abs + sigma_z * wz_abs + eps
+
+    return torch.exp(-power / denom)
+
+
 def action_rate_l2(env: ManagerBasedRlEnv) -> torch.Tensor:
   """Penalize action rate, clamped to prevent gradient explosion."""
   raw = torch.sum(

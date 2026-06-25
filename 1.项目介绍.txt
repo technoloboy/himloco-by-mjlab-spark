@@ -601,7 +601,7 @@ python scripts/train.py Boying-HIM-Flat --env.scene.num-envs=4096
 
 Play（可视化验证，替换 checkpoint 路径）
 python scripts/play.py Boying-HIM-Rough \
-  --checkpoint_file=logs/rsl_rl/boying_him_velocity/2026-06-21_13-18-06/model_280.pt
+  --checkpoint_file=logs/rsl_rl/boying_him_velocity/2026-06-24_12-09-02/model_220.pt
 
 多卡的话加 --gpu-ids 0 1：
 python scripts/train.py Boying-HIM-Rough --gpu-ids 0 1 --env.scene.num-envs=4096
@@ -614,9 +614,9 @@ python scripts/train.py Boying-HIM-Rough \
     --agent.load_checkpoint="model_2000.pt" 
 
 1180效果不错
-    
-python export_him_onnx.py --checkpoint <any_model_N.pt> 
+onnx_file
+python export_him_onnx.py --checkpoint logs/rsl_rl/boying_him_velocity/2026-06-24_12-09-02/model_3500.pt
 
  python scripts/play_onnx.py Boying-HIM-Rough \
-    --onnx_file logs/rsl_rl/boying_him_velocity/2026-06-21_16-41-29/policy_1180.onnx
+    --onnx_file logs/rsl_rl/boying_him_velocity/2026-06-24_12-09-02/policy_3500.onnx
 

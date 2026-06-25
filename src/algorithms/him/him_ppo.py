@@ -90,7 +90,10 @@ class HIMPPO(PPO):
     super().compute_returns(obs)
     # Clamp returns to prevent a single high-bootstrap episode from corrupting
     # the critic's EmpiricalNormalization via a catastrophic value loss spike.
-    self.storage.returns.clamp_(-50.0, 50.0)
+    # Normal steady-state return ~ 4-5; absolute worst-case ~ 12.
+    # ±50 was too loose (spike returns were ~18, within range and not clamped).
+    # ±10 catches the observed spikes while preserving all legitimate returns.
+    self.storage.returns.clamp_(-10.0, 10.0)
 
   def update(self) -> dict[str, float]:
     est_loss, swap_loss = self._update_estimator()

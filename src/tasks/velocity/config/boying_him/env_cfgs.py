@@ -49,7 +49,7 @@ def _proprio_terms() -> dict[str, ObservationTermCfg]:
     ),
     "phase": ObservationTermCfg(
       func=mdp.phase,
-      params={"period": 0.6, "command_name": "twist"},
+      params={"period": 0.8, "command_name": "twist"},
     ),
     "joint_pos": ObservationTermCfg(
       func=mdp.joint_pos_rel,

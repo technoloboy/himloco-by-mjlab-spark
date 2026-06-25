@@ -102,7 +102,6 @@ def unitree_go2_rough_env_cfg(
     r".*(FR|FL|RR|RL)_calf_joint.*": 0.5,
   }
 
-  cfg.rewards["foot_gait"].params["offset"] = [0.0, 0.5, 0.5, 0.0]
   cfg.rewards["body_orientation_l2"].params["asset_cfg"].body_names = ("base_link",)
   cfg.rewards["body_ang_vel"].params["asset_cfg"].body_names = ("base_link",)
   cfg.rewards["foot_clearance"].params["asset_cfg"].site_names = site_names
