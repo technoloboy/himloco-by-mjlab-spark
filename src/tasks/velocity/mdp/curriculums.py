@@ -31,6 +31,7 @@ def terrain_levels_vel(
   env: ManagerBasedRlEnv,
   env_ids: torch.Tensor,
   command_name: str,
+  max_level_per_episode: float = 1.0,
   asset_cfg: SceneEntityCfg = _DEFAULT_SCENE_CFG,
 ) -> torch.Tensor:
   asset: Entity = env.scene[asset_cfg.name]
@@ -50,6 +51,12 @@ def terrain_levels_vel(
 
   # Robots that walked far enough progress to harder terrains.
   move_up = distance > terrain_generator.size[0] / 2
+
+  # Limit the fraction of envs that can advance per step to prevent terrain
+  # levels from spiking faster than the policy can adapt.
+  if max_level_per_episode < 1.0:
+    gate = torch.rand(move_up.shape, device=move_up.device) < max_level_per_episode
+    move_up = move_up & gate
 
   # Robots that walked less than half of their required distance go to simpler
   # terrains.

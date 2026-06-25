@@ -411,8 +411,9 @@ class variable_posture:
 class energy_efficiency:
   """Reward energy-efficient locomotion; trot emerges as energy-optimal gait.
 
-  reward = exp(-P / (sigma_x * |vx_cmd| + sigma_z * |wz_cmd| + eps))
+  reward = exp(-P / (sigma_x * |vx_cmd| + sigma_z * |wz_cmd| + eps)) * (1 - slip_factor)
   P = sum(clamp(tau * qd, min=0)) — positive mechanical power only.
+  slip_factor = clamp(mean_contact_foot_xy_vel / slip_scale, 0, 1) penalizes sliding.
   """
 
   def __init__(self, cfg: RewardTermCfg, env: ManagerBasedRlEnv):
@@ -422,6 +423,11 @@ class energy_efficiency:
     self._joint_ids = torch.tensor(joint_ids, device=env.device, dtype=torch.long)
     self._actuator_ids = torch.tensor(actuator_ids, device=env.device, dtype=torch.long)
 
+    self._slip_sensor_name: str | None = cfg.params.get("slip_sensor_name", None)
+    if self._slip_sensor_name is not None:
+      site_ids, _ = asset.find_sites(cfg.params["asset_cfg"].site_names)
+      self._site_ids = torch.tensor(site_ids, device=env.device, dtype=torch.long)
+
   def __call__(
     self,
     env: ManagerBasedRlEnv,
@@ -430,6 +436,8 @@ class energy_efficiency:
     sigma_x: float = 300.0,
     sigma_z: float = 150.0,
     eps: float = 1.0,
+    slip_sensor_name: str | None = None,
+    slip_scale: float = 0.5,
   ) -> torch.Tensor:
     asset: Entity = env.scene[asset_cfg.name]
     command = env.command_manager.get_command(command_name)
@@ -443,7 +451,20 @@ class energy_efficiency:
     wz_abs = torch.abs(command[:, 2])
     denom = sigma_x * vx_abs + sigma_z * wz_abs + eps
 
-    return torch.exp(-power / denom)
+    base_reward = torch.exp(-power / denom)
+
+    if self._slip_sensor_name is not None:
+      contact_sensor: ContactSensor = env.scene[self._slip_sensor_name]
+      assert contact_sensor.data.found is not None
+      in_contact = (contact_sensor.data.found > 0).float()              # [B, N]
+      foot_vel_xy = asset.data.site_lin_vel_w[:, self._site_ids, :2]   # [B, N, 2]
+      vel_norm = torch.norm(foot_vel_xy, dim=-1)                        # [B, N]
+      num_contact = in_contact.sum(dim=1).clamp(min=1.0)
+      mean_slip = (vel_norm * in_contact).sum(dim=1) / num_contact      # [B]
+      slip_factor = (mean_slip / slip_scale).clamp(0.0, 1.0)
+      base_reward = base_reward * (1.0 - slip_factor)
+
+    return base_reward
 
 
 def action_rate_l2(env: ManagerBasedRlEnv) -> torch.Tensor:

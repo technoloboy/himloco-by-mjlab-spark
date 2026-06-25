@@ -405,11 +405,13 @@ def make_velocity_env_cfg() -> ManagerBasedRlEnvCfg:
       func=mdp.energy_efficiency,
       weight=0.5,
       params={
-        "asset_cfg": SceneEntityCfg("robot", joint_names=".*"),
+        "asset_cfg": SceneEntityCfg("robot", joint_names=".*", site_names=()),  # site_names set per-robot
         "command_name": "twist",
         "sigma_x": 300.0,
         "sigma_z": 150.0,
         "eps": 1.0,
+        "slip_sensor_name": "feet_ground_contact",
+        "slip_scale": 0.5,
       },
     ),
     "foot_clearance": RewardTermCfg(
@@ -424,7 +426,7 @@ def make_velocity_env_cfg() -> ManagerBasedRlEnvCfg:
     ),
     "foot_slip": RewardTermCfg(
       func=mdp.feet_slip,
-      weight=-0.25,
+      weight=-0.5,
       params={
         "sensor_name": "feet_ground_contact",
         "command_name": "twist",
@@ -471,7 +473,7 @@ def make_velocity_env_cfg() -> ManagerBasedRlEnvCfg:
   curriculum = {
     "terrain_levels": CurriculumTermCfg(
       func=mdp.terrain_levels_vel,
-      params={"command_name": "twist"},
+      params={"command_name": "twist", "max_level_per_episode": 0.3},
     ),
     "command_vel": CurriculumTermCfg(
       func=mdp.commands_vel,
