@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, TypedDict, cast
 
+import numpy as np
 import torch
 
 from mjlab.entity import Entity
@@ -173,3 +174,57 @@ def reward_weight(
     if env.common_step_counter > stage["step"]:
       reward_term_cfg.weight = stage["weight"]
   return torch.tensor([reward_term_cfg.weight])
+
+
+def commands_vel_him(
+  env: "ManagerBasedRlEnv",
+  env_ids: torch.Tensor,
+  command_name: str,
+  reward_name: str,
+  max_curriculum: float = 2.0,
+  expand_step: float = 0.2,
+  tracking_threshold: float = 0.8,
+) -> dict[str, torch.Tensor]:
+  """HIMLoco-style command curriculum: 20/80 env-split + fixed step expansion.
+
+  Uses _step_reward (raw * weight, no dt scaling) to mirror HIMLoco exactly:
+    HIMLoco: episode_sums / max_ep_len > 0.8 * (weight * dt)
+    simplifies to: raw > 0.8
+    here:     step_reward.mean() > 0.8 * weight  (same condition, no dt)
+
+  Steady state: track_linear_velocity raw ~0.97, weight=1.5
+    mean ~1.455 > threshold 1.20 → triggers expansion ✓
+  """
+  del env_ids  # Unused; operates on all envs.
+  rm = env.reward_manager
+
+  if reward_name not in rm._term_names:
+    return {}
+
+  # _step_reward stores raw * weight (dt scaling removed), shape [num_envs, num_terms].
+  idx = rm._term_names.index(reward_name)
+  step_reward = rm._step_reward[:, idx]  # [num_envs]
+
+  reward_scale = abs(rm.get_term_cfg(reward_name).weight)
+  threshold = tracking_threshold * reward_scale  # 0.8 * 1.5 = 1.20
+
+  split = max(1, int(env.num_envs * 0.2))
+  mean_high = step_reward[:split].mean()  # high-vel group (first 20% by env index)
+  mean_low  = step_reward[split:].mean()  # base group (remaining 80%)
+
+  command_term = env.command_manager.get_term(command_name)
+  assert command_term is not None
+  ranges = command_term.cfg.ranges
+
+  if mean_high > threshold and mean_low > threshold:
+    lo = float(np.clip(ranges.lin_vel_x[0] - expand_step, -max_curriculum, 0.0))
+    hi = float(np.clip(ranges.lin_vel_x[1] + expand_step,  0.0,  max_curriculum))
+    ranges.lin_vel_x = (lo, hi)
+
+  return {
+    "lin_vel_x_lo":     torch.tensor(ranges.lin_vel_x[0]),
+    "lin_vel_x_hi":     torch.tensor(ranges.lin_vel_x[1]),
+    "mean_high_reward": mean_high if isinstance(mean_high, torch.Tensor) else torch.tensor(float(mean_high)),
+    "mean_low_reward":  mean_low  if isinstance(mean_low,  torch.Tensor) else torch.tensor(float(mean_low)),
+    "threshold":        torch.tensor(threshold),
+  }

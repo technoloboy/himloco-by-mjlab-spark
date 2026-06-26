@@ -5,14 +5,12 @@ from mjlab.envs import ManagerBasedRlEnvCfg
 from mjlab.envs import mdp as envs_mdp
 from mjlab.envs.mdp.actions import JointPositionActionCfg
 from mjlab.managers import TerminationTermCfg
-from mjlab.managers.curriculum_manager import CurriculumTermCfg
 from mjlab.managers.event_manager import EventTermCfg
 from mjlab.sensor import ContactMatch, ContactSensorCfg, RayCastSensorCfg
 from mjlab.tasks.velocity import mdp
 from mjlab.tasks.velocity.mdp import UniformVelocityCommandCfg
 
 from src.tasks.velocity.velocity_env_cfg import make_velocity_env_cfg
-from src.tasks.velocity.mdp.curriculums import commands_vel_adaptive
 
 
 def boying_rough_env_cfg(play: bool = False) -> ManagerBasedRlEnvCfg:
@@ -45,16 +43,17 @@ def boying_rough_env_cfg(play: bool = False) -> ManagerBasedRlEnvCfg:
     num_slots=1,
     track_air_time=True,
   )
-  # Monitors all non-foot collision geoms (base, head, hip, thigh, calf).
-  # boying has extra head geoms (head1_collision, head2_collision) compared to
-  # Go2 — these are covered by the .*_collision\d*$ pattern automatically.
-  nonfoot_ground_cfg = ContactSensorCfg(
-    name="nonfoot_ground_touch",
+  # Monitors only base and head collision geoms — mirrors HIMLoco's terminate_after_contacts_on=["base"].
+  # Hip/thigh/calf contact with ground does NOT trigger termination.
+  base_head_ground_cfg = ContactSensorCfg(
+    name="base_head_ground_touch",
     primary=ContactMatch(
       mode="geom",
       entity="robot",
-      pattern=r".*_collision\d*$",
-      exclude=tuple(geom_names),
+      pattern=(
+        "base1_collision", "base2_collision",
+        "head1_collision", "head2_collision",
+      ),
     ),
     secondary=ContactMatch(mode="body", pattern="terrain"),
     fields=("found", "force"),
@@ -64,11 +63,12 @@ def boying_rough_env_cfg(play: bool = False) -> ManagerBasedRlEnvCfg:
   )
   cfg.scene.sensors = (cfg.scene.sensors or ()) + (
     feet_ground_cfg,
-    nonfoot_ground_cfg,
+    base_head_ground_cfg,
   )
 
   if cfg.scene.terrain is not None and cfg.scene.terrain.terrain_generator is not None:
     cfg.scene.terrain.terrain_generator.curriculum = True
+    cfg.scene.terrain.max_init_terrain_level = 5  # HIMLoco default: start up to level 5
 
   joint_pos_action = cfg.actions["joint_pos"]
   assert isinstance(joint_pos_action, JointPositionActionCfg)
@@ -109,28 +109,7 @@ def boying_rough_env_cfg(play: bool = False) -> ManagerBasedRlEnvCfg:
 
   cfg.terminations["illegal_contact"] = TerminationTermCfg(
     func=mdp.illegal_contact,
-    params={"sensor_name": nonfoot_ground_cfg.name, "force_threshold": 10.0},
-  )
-
-  # Set initial narrow velocity ranges; adaptive curriculum expands toward targets.
-  twist_cmd = cfg.commands["twist"]
-  assert isinstance(twist_cmd, UniformVelocityCommandCfg)
-  twist_cmd.ranges.lin_vel_x = (-0.5, 1.0)
-  twist_cmd.ranges.lin_vel_y = (-0.5, 0.5)
-  twist_cmd.ranges.ang_vel_z = (-1.0, 1.0)
-
-  cfg.curriculum["command_vel"] = CurriculumTermCfg(
-    func=commands_vel_adaptive,
-    params={
-      "command_name": "twist",
-      "reward_name": "track_linear_velocity",
-      "target_lin_vel_x": (-1.0, 2.0),
-      "target_lin_vel_y": (-1.0, 1.0),
-      "target_ang_vel_z": (-1.0, 1.0),
-      "mastery_threshold": 0.7,
-      "expand_rate": 0.005,
-      "ema_alpha": 0.02,
-    },
+    params={"sensor_name": base_head_ground_cfg.name, "force_threshold": 1.0},
   )
 
   if play:

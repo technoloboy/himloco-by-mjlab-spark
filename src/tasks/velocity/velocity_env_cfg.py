@@ -33,7 +33,7 @@ from mjlab.terrains import (
   BoxInvertedPyramidStairsTerrainCfg,
   HfPyramidSlopedTerrainCfg,
   HfPerlinNoiseTerrainCfg,
-  HfWaveTerrainCfg,
+  HfDiscreteObstaclesTerrainCfg,
 )
 from mjlab.utils.noise import UniformNoiseCfg as Unoise
 from mjlab.viewer import ViewerConfig
@@ -41,10 +41,10 @@ from mjlab.viewer import ViewerConfig
 import src.tasks.velocity.mdp as mdp
 
 
-# Terrain generator with HIMLoco-style linear difficulty scaling per row.
-# mjlab automatically scales parameters by difficulty = row / num_rows when
-# curriculum=True.  Parameter upper bounds are tuned for Boying (smaller than A1).
-# HfRandomUniform is replaced with HfPerlinNoise which properly scales with difficulty.
+# Terrain generator mirroring HIMLoco's 8-terrain structure, parameters scaled
+# for Boying (leg length ~470mm vs A1's ~280mm; step height ceiling 0.20m vs 0.23m).
+# mjlab scales each sub-terrain parameter by difficulty = row/num_rows when
+# curriculum=True. HfWaveTerrainCfg dropped; stepping stones + discrete obstacles added.
 _ROUGH_TERRAIN_CFG = TerrainGeneratorCfg(
   size=(8.0, 8.0),
   border_width=20.0,
@@ -52,21 +52,7 @@ _ROUGH_TERRAIN_CFG = TerrainGeneratorCfg(
   num_cols=20,
   curriculum=False,  # boying/env_cfgs.py sets curriculum=True for training
   sub_terrains={
-    "flat": BoxFlatTerrainCfg(proportion=0.2),
-    "pyramid_stairs": BoxPyramidStairsTerrainCfg(
-      proportion=0.2,
-      step_height_range=(0.0, 0.08),
-      step_width=0.3,
-      platform_width=3.0,
-      border_width=1.0,
-    ),
-    "pyramid_stairs_inv": BoxInvertedPyramidStairsTerrainCfg(
-      proportion=0.2,
-      step_height_range=(0.0, 0.08),
-      step_width=0.3,
-      platform_width=3.0,
-      border_width=1.0,
-    ),
+    "flat": BoxFlatTerrainCfg(proportion=0.1),
     "hf_pyramid_slope": HfPyramidSlopedTerrainCfg(
       proportion=0.1,
       slope_range=(0.0, 0.4),
@@ -80,15 +66,34 @@ _ROUGH_TERRAIN_CFG = TerrainGeneratorCfg(
       border_width=0.25,
       inverted=True,
     ),
-    "hf_perlin_noise": HfPerlinNoiseTerrainCfg(
-      proportion=0.1,
-      height_range=(0.0, 0.06),
+    "pyramid_stairs": BoxPyramidStairsTerrainCfg(
+      proportion=0.15,
+      step_height_range=(0.05, 0.20),
+      step_width=0.3,
+      platform_width=3.0,
+      border_width=1.0,
     ),
-    "wave_terrain": HfWaveTerrainCfg(
-      proportion=0.1,
-      amplitude_range=(0.0, 0.10),
-      num_waves=4,
-      border_width=0.25,
+    "pyramid_stairs_inv": BoxInvertedPyramidStairsTerrainCfg(
+      proportion=0.15,
+      step_height_range=(0.05, 0.20),
+      step_width=0.3,
+      platform_width=3.0,
+      border_width=1.0,
+    ),
+    "hf_discrete_obstacles": HfDiscreteObstaclesTerrainCfg(
+      proportion=0.20,
+      obstacle_height_range=(0.05, 0.15),
+      obstacle_width_range=(0.4, 0.8),
+      num_obstacles=20,
+      platform_width=1.0,
+    ),
+    "hf_perlin_noise": HfPerlinNoiseTerrainCfg(
+      proportion=0.10,
+      height_range=(0.0, 0.08),
+    ),
+    "hf_perlin_noise2": HfPerlinNoiseTerrainCfg(
+      proportion=0.10,
+      height_range=(0.0, 0.08),
     ),
   },
   add_lights=True,
@@ -233,7 +238,7 @@ def make_velocity_env_cfg() -> ManagerBasedRlEnvCfg:
       heading_control_stiffness=0.5,
       debug_vis=True,
       ranges=UniformVelocityCommandCfg.Ranges(
-        lin_vel_x=(-1.0, 2.0),
+        lin_vel_x=(-1.0, 1.0),
         lin_vel_y=(-1.0, 1.0),
         ang_vel_z=(-1.0, 1.0),
         heading=(-math.pi, math.pi),
@@ -392,7 +397,7 @@ def make_velocity_env_cfg() -> ManagerBasedRlEnvCfg:
       weight=-0.05,  # Override per-robot
       params={"asset_cfg": SceneEntityCfg("robot", body_names=())},  # Set per-robot.
     ),
-    "is_terminated": RewardTermCfg(func=mdp.is_terminated, weight=-10.0),
+    "is_terminated": RewardTermCfg(func=mdp.is_terminated, weight=-1.0),
     "joint_acc_l2": RewardTermCfg(func=mdp.joint_acc_l2, weight=-2.5e-7),
     "joint_pos_limits": RewardTermCfg(func=mdp.joint_pos_limits, weight=-1.0),
     "action_rate_l2": RewardTermCfg(func=mdp.action_rate_l2, weight=-0.01),
@@ -476,13 +481,13 @@ def make_velocity_env_cfg() -> ManagerBasedRlEnvCfg:
       params={"command_name": "twist", "max_level_per_episode": 0.3},
     ),
     "command_vel": CurriculumTermCfg(
-      func=mdp.commands_vel,
+      func=mdp.commands_vel_him,
       params={
         "command_name": "twist",
-        "velocity_stages": [
-          {"step": 0, "lin_vel_x": (-0.5, 1.0), "lin_vel_y": (-0.5, 0.5), "ang_vel_z": (-1.0, 1.0)},
-          {"step": 5000 * 100, "lin_vel_x": (-1.0, 2.0), "lin_vel_y": (-1.0, 1.0)},
-        ],
+        "reward_name": "track_linear_velocity",
+        "max_curriculum": 2.0,
+        "expand_step": 0.2,
+        "tracking_threshold": 0.8,
       },
     ),
   }

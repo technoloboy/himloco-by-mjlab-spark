@@ -601,17 +601,17 @@ python scripts/train.py Boying-HIM-Flat --env.scene.num-envs=4096
 
 Play（可视化验证，替换 checkpoint 路径）
 python scripts/play.py Boying-HIM-Rough \
-  --checkpoint_file=logs/rsl_rl/boying_him_velocity/2026-06-24_12-09-02/model_220.pt
+  --checkpoint_file=logs/rsl_rl/boying_him_velocity/2026-06-25_15-53-53/model_5140.pt --no-terminations=True
 
 多卡的话加 --gpu-ids 0 1：
 python scripts/train.py Boying-HIM-Rough --gpu-ids 0 1 --env.scene.num-envs=4096
 
 
 python scripts/train.py Boying-HIM-Rough \
-    --env.scene.num-envs=4096 \
+    --env.scene.num-envs=2048 \
     --agent.resume=True \
-    --agent.load_run="2026-06-21_19-15-48" \
-    --agent.load_checkpoint="model_2000.pt" 
+    --agent.load_run="2026-06-25_19-55-04" \
+    --agent.load_checkpoint="model_6000.pt" 
 
 1180效果不错
 onnx_file
@@ -620,3 +620,8 @@ python export_him_onnx.py --checkpoint logs/rsl_rl/boying_him_velocity/2026-06-2
  python scripts/play_onnx.py Boying-HIM-Rough \
     --onnx_file logs/rsl_rl/boying_him_velocity/2026-06-24_12-09-02/policy_3500.onnx
 
+ python scripts/play_keyboard.py Boying-HIM-Rough \
+     --checkpoint_file=logs/rsl_rl/boying_him_velocity/2026-06-26_14-45-58/model_9380.pt 
+
+
+现在根据源码分析奖励配置'/home/wkl/Desktop/himloco-by/himloco-boying'中的Boying-HIM-Rough任务的奖励配置,和'/home/wkl/Desktop/himloco-by/HIMLoco'中的奖励配置有什么相同之处和不同之处?请通过源码详细对比分析,并且解释                                                      
