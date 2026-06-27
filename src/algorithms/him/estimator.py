@@ -153,6 +153,18 @@ class HIMEstimator(nn.Module):
     next_obs_frame = next_obs_frame.detach()
     next_vel = next_vel.detach()
 
+    # Build combined mask: episode-boundary mask AND physics-validity mask.
+    # hfield collision overflow produces non-physical velocities (>>20 m/s or NaN/inf)
+    # that would cause estimation_loss to spike to astronomical values.
+    vel_finite = torch.isfinite(next_vel).all(dim=-1)          # [B]
+    vel_reasonable = (next_vel.norm(dim=-1) < 5.0)              # [B] Boying max design ~1.5 m/s; 5 m/s guards hfield collision overflow
+    physics_valid = (vel_finite & vel_reasonable).float()        # [B]
+    if valid_mask is not None:
+      m = valid_mask.float().view(-1) * physics_valid
+    else:
+      m = physics_valid
+    denom = torch.clamp(m.sum(), min=1.0)
+
     z_s_full = self.encoder(obs_history)
     pred_vel, z_s = z_s_full[..., :3], z_s_full[..., 3:]
     z_t = self.target(next_obs_frame)
@@ -176,16 +188,10 @@ class HIMEstimator(nn.Module):
     log_p_s = F.log_softmax(score_s / self.temperature, dim=-1)
     log_p_t = F.log_softmax(score_t / self.temperature, dim=-1)
 
-    if valid_mask is not None:
-      m = valid_mask.float().view(-1)
-      denom = torch.clamp(m.sum(), min=1.0)
-      swap_per_sample = -0.5 * (q_s * log_p_t + q_t * log_p_s).sum(dim=-1)
-      swap_loss = (swap_per_sample * m).sum() / denom
-      vel_per_sample = F.mse_loss(pred_vel, next_vel, reduction="none").mean(dim=-1)
-      estimation_loss = (vel_per_sample * m).sum() / denom
-    else:
-      swap_loss = -0.5 * (q_s * log_p_t + q_t * log_p_s).mean()
-      estimation_loss = F.mse_loss(pred_vel, next_vel)
+    swap_per_sample = -0.5 * (q_s * log_p_t + q_t * log_p_s).sum(dim=-1)
+    swap_loss = (swap_per_sample * m).sum() / denom
+    vel_per_sample = F.mse_loss(pred_vel, next_vel, reduction="none").mean(dim=-1)
+    estimation_loss = (vel_per_sample * m).sum() / denom
 
     losses = estimation_loss + swap_loss
 
