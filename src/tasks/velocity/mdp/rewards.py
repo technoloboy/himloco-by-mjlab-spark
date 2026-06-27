@@ -507,7 +507,7 @@ def base_height_l2(
 ) -> torch.Tensor:
     """Penalize squared deviation from target base height (Go1 base_height reward)."""
     asset: Entity = env.scene[asset_cfg.name]
-    base_z = asset.data.root_pos_w[:, 2]
+    base_z = asset.data.root_link_pos_w[:, 2]
     return torch.square(base_z - target_height)
 
 
