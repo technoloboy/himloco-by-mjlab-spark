@@ -7,7 +7,8 @@ The script reconstructs the HIMActorModel from the checkpoint's weight shapes
 (no environment required), wraps it with _HIMExportModel, and exports via
 torch.onnx.  The resulting ONNX input is:
 
-    obs: float32[1, S + H*S]  = concat([current_frame(47), history(282)])
+    obs: float32[1, S + H*S]  = concat([current_frame(45), history(270)])
+                                 phase ON: concat([current_frame(47), history(282)])
 
 Output:
     actions: float32[1, 12]

@@ -194,10 +194,16 @@ class _Cfg:
   """Number of parallel environments."""
   device: str | None = None
   """Torch device (default: cuda:0 if available, else cpu)."""
+  phase: bool = False
+  """Enable gait phase observation — must match the training config of the checkpoint."""
 
 
 # ── Main ──────────────────────────────────────────────────────────────────────
 def main() -> None:
+  # Pre-scan --phase before importing src.tasks (module-level PHASE_ENABLED read).
+  import os
+  os.environ["MJLAB_PHASE_ENABLED"] = "1" if "--phase" in sys.argv else "0"
+
   import mjlab.tasks  # noqa: F401
   import src.tasks    # noqa: F401
 
