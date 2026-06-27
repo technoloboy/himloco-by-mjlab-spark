@@ -1,22 +1,19 @@
 """Boying HIM velocity environment configurations.
 
-Mirrors the Go2-HIM pattern:
-- Actor: HIM observation groups (proprio_history / proprio_current / estimator_vel)
-  — blind proprioceptive policy, no height scan.
-- Critic: inherits the full privileged observation group from the base boying config,
-  including height_scan on rough terrain.
+Mirrors HIMLoco Go1 obs layout with scale parity.
 
-Boying single-step proprioceptive dim S = 50:
-    base_ang_vel(3) + projected_gravity(3) + command(3) + phase(2)
-  + joint_pos(12) + joint_vel(12) + actions(12) + base_lin_vel(3) = 50
+Single-step proprio dim S depends on MJLAB_PHASE_ENABLED:
+  - phase OFF (default): S = 47
+      ang_vel(3,×0.25) + gravity(3) + command(3,scaled[2,2,0.25])
+    + joint_pos(12) + joint_vel(12,×0.05) + actions(12) + lin_vel(3,×2.0) = 47
+  - phase ON: S = 49 (add phase(2))
 
-Mirrors HIMLoco's original obs design where history includes lin_vel as an
-auxiliary signal for the estimator encoder.
-
-So: proprio_history = 50 × 6 = 300, proprio_current = 50, estimator_vel = 3.
+History T = 6. proprio_history = T × S, proprio_current = S, estimator_vel = 3.
 """
 
 from __future__ import annotations
+
+import os
 
 from mjlab.envs import ManagerBasedRlEnvCfg
 from mjlab.managers.observation_manager import ObservationGroupCfg, ObservationTermCfg
@@ -29,48 +26,61 @@ from src.tasks.velocity.config.boying.env_cfgs import (
 )
 
 HISTORY_LENGTH = 6
+PHASE_ENABLED = os.environ.get("MJLAB_PHASE_ENABLED", "0") == "1"
 
 
 def _proprio_terms() -> dict[str, ObservationTermCfg]:
-  """Boying proprioceptive single-step terms.
+  """Boying proprioceptive single-step terms aligned to HIMLoco Go1 obs_scales.
 
-  Identical structure to Go2-HIM; noise scales match the base velocity task.
-  Includes base_lin_vel to mirror HIMLoco's original obs design, where the
-  encoder history contains true velocity as a supervision auxiliary signal.
+  Noise values are final (noise_level × noise_scale × obs_scale):
+    ang_vel: 1.0 × 0.2 × 0.25 = 0.05
+    gravity: 1.0 × 0.05 × 1.0 = 0.05
+    dof_pos: 1.0 × 0.01 × 1.0 = 0.01
+    dof_vel: 1.0 × 1.5  × 0.05 = 0.075
+    lin_vel: 1.0 × 0.1  × 2.0  = 0.2
   """
-  return {
+  terms: dict[str, ObservationTermCfg] = {
     "base_ang_vel": ObservationTermCfg(
       func=mdp.builtin_sensor,
       params={"sensor_name": "robot/imu_ang_vel"},
-      noise=Unoise(n_min=-0.2, n_max=0.2),
+      noise=Unoise(n_min=-0.05, n_max=0.05),
+      scale=0.25,
     ),
     "projected_gravity": ObservationTermCfg(
       func=mdp.projected_gravity,
       noise=Unoise(n_min=-0.05, n_max=0.05),
+      scale=1.0,
     ),
     "command": ObservationTermCfg(
-      func=mdp.generated_commands,
-      params={"command_name": "twist"},
+      func=mdp.generated_commands_scaled,
+      params={"command_name": "twist", "scale": (2.0, 2.0, 0.25)},
     ),
-    "phase": ObservationTermCfg(
+  }
+  if PHASE_ENABLED:
+    terms["phase"] = ObservationTermCfg(
       func=mdp.phase,
-      params={"period": 0.8, "command_name": "twist"},
-    ),
+      params={"period": 0.5, "command_name": "twist"},
+    )
+  terms.update({
     "joint_pos": ObservationTermCfg(
       func=mdp.joint_pos_rel,
       noise=Unoise(n_min=-0.01, n_max=0.01),
+      scale=1.0,
     ),
     "joint_vel": ObservationTermCfg(
       func=mdp.joint_vel_rel,
-      noise=Unoise(n_min=-1.5, n_max=1.5),
+      noise=Unoise(n_min=-0.075, n_max=0.075),
+      scale=0.05,
     ),
     "actions": ObservationTermCfg(func=mdp.last_action),
     "base_lin_vel": ObservationTermCfg(
       func=mdp.builtin_sensor,
       params={"sensor_name": "robot/imu_lin_vel"},
-      noise=Unoise(n_min=-0.5, n_max=0.5),
+      noise=Unoise(n_min=-0.2, n_max=0.2),
+      scale=2.0,
     ),
-  }
+  })
+  return terms
 
 
 def _him_observations(cfg: ManagerBasedRlEnvCfg, play: bool) -> dict:
