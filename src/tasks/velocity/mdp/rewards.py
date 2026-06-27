@@ -26,18 +26,16 @@ def track_linear_velocity(
   command_name: str,
   asset_cfg: SceneEntityCfg = _DEFAULT_ASSET_CFG,
 ) -> torch.Tensor:
-  """Reward for tracking the commanded base linear velocity.
+  """Reward for tracking the commanded base XY linear velocity (Go1 parity).
 
-  The commanded z velocity is assumed to be zero.
+  Z error removed — lin_vel_z_l2 handles z separately.
   """
   asset: Entity = env.scene[asset_cfg.name]
   command = env.command_manager.get_command(command_name)
   assert command is not None, f"Command '{command_name}' not found."
   actual = asset.data.root_link_lin_vel_b
   xy_error = torch.sum(torch.square(command[:, :2] - actual[:, :2]), dim=1)
-  z_error = torch.square(actual[:, 2])
-  lin_vel_error = xy_error + (2 * z_error)
-  return torch.exp(-lin_vel_error / std**2)
+  return torch.exp(-xy_error / std**2)
 
 
 def track_angular_velocity(
@@ -46,18 +44,16 @@ def track_angular_velocity(
   command_name: str,
   asset_cfg: SceneEntityCfg = _DEFAULT_ASSET_CFG,
 ) -> torch.Tensor:
-  """Reward heading error for heading-controlled envs, angular velocity for others.
+  """Reward for tracking the commanded yaw angular velocity (Go1 parity).
 
-  The commanded xy angular velocities are assumed to be zero.
+  XY error removed — body_ang_vel handles xy separately.
   """
   asset: Entity = env.scene[asset_cfg.name]
   command = env.command_manager.get_command(command_name)
   assert command is not None, f"Command '{command_name}' not found."
   actual = asset.data.root_link_ang_vel_b
   z_error = torch.square(command[:, 2] - actual[:, 2])
-  xy_error = torch.sum(torch.square(actual[:, :2]), dim=1)
-  ang_vel_error = z_error + (0.05 * xy_error)
-  return torch.exp(-ang_vel_error / std**2)
+  return torch.exp(-z_error / std**2)
 
 
 def body_orientation_l2(
@@ -493,4 +489,42 @@ def stand_still(
             scale = (total_command <= command_threshold).float()
             reward *= scale
     return reward
+
+
+def lin_vel_z_l2(
+    env: "ManagerBasedRlEnv",
+    asset_cfg: SceneEntityCfg = _DEFAULT_ASSET_CFG,
+) -> torch.Tensor:
+    """Penalize Z-direction linear velocity (Go1 lin_vel_z reward)."""
+    asset: Entity = env.scene[asset_cfg.name]
+    return torch.square(asset.data.root_link_lin_vel_b[:, 2])
+
+
+def base_height_l2(
+    env: "ManagerBasedRlEnv",
+    target_height: float,
+    asset_cfg: SceneEntityCfg = _DEFAULT_ASSET_CFG,
+) -> torch.Tensor:
+    """Penalize squared deviation from target base height (Go1 base_height reward)."""
+    asset: Entity = env.scene[asset_cfg.name]
+    base_z = asset.data.root_pos_w[:, 2]
+    return torch.square(base_z - target_height)
+
+
+class smoothness:
+    """Penalize ||a_t - 2*a_{t-1} + a_{t-2}||^2 (Go1 smoothness reward)."""
+
+    def __init__(self, cfg: RewardTermCfg, env: "ManagerBasedRlEnv"):
+        self.prev_prev_action = torch.zeros(
+            env.num_envs, env.action_manager.total_action_dim,
+            device=env.device,
+        )
+
+    def __call__(self, env: "ManagerBasedRlEnv") -> torch.Tensor:
+        a = env.action_manager.action
+        a_prev = env.action_manager.prev_action
+        diff = a - 2.0 * a_prev + self.prev_prev_action
+        cost = torch.sum(torch.square(diff), dim=1).clamp(max=10.0)
+        self.prev_prev_action = a_prev.clone()
+        return cost
 
