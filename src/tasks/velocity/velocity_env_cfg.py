@@ -293,7 +293,7 @@ def make_velocity_env_cfg() -> ManagerBasedRlEnvCfg:
       ranges=UniformVelocityCommandCfg.Ranges(
         lin_vel_x=(-1.0, 1.0),
         lin_vel_y=(-1.0, 1.0),
-        ang_vel_z=(-1.0, 1.0),
+        ang_vel_z=(-3.14, 3.14),
         heading=(-math.pi, math.pi),
       ),
     )
@@ -326,14 +326,12 @@ def make_velocity_env_cfg() -> ManagerBasedRlEnvCfg:
       },
     ),
     "reset_robot_joints": EventTermCfg(
-      func=mdp.reset_joints_by_offset,
+      func=mdp.reset_joints_by_scale,
       mode="reset",
       params={
-        # HIMLoco randomizes joint pos as default_pos * uniform(0.5, 1.5).
-        # reset_joints_by_offset is additive; ±0.3 rad is a reasonable
-        # approximation that covers the typical variation at all joints.
-        "position_range": (-0.3, 0.3),
-        "velocity_range": (-0.0, 0.0),  # HIMLoco zeros joint velocities on reset.
+        # Mirrors HIMLoco: dof_pos = default_dof_pos * uniform(0.5, 1.5).
+        "position_range": (0.5, 1.5),
+        "velocity_range": (0.0, 0.0),  # HIMLoco zeros joint velocities on reset.
         "asset_cfg": SceneEntityCfg("robot", joint_names=(".*",)),
       },
     ),
