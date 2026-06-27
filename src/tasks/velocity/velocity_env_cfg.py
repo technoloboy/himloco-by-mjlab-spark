@@ -58,6 +58,7 @@ _ROUGH_TERRAIN_CFG = TerrainGeneratorCfg(
       slope_range=(0.0, 0.4),
       platform_width=2.0,
       border_width=0.25,
+      horizontal_scale=0.15,
     ),
     "hf_pyramid_slope_inv": HfPyramidSlopedTerrainCfg(
       proportion=0.1,
@@ -65,6 +66,7 @@ _ROUGH_TERRAIN_CFG = TerrainGeneratorCfg(
       platform_width=2.0,
       border_width=0.25,
       inverted=True,
+      horizontal_scale=0.15,
     ),
     "pyramid_stairs": BoxPyramidStairsTerrainCfg(
       proportion=0.15,
@@ -86,14 +88,17 @@ _ROUGH_TERRAIN_CFG = TerrainGeneratorCfg(
       obstacle_width_range=(0.4, 0.8),
       num_obstacles=20,
       platform_width=1.0,
+      horizontal_scale=0.15,
     ),
     "hf_perlin_noise": HfPerlinNoiseTerrainCfg(
       proportion=0.10,
       height_range=(0.0, 0.08),
+      horizontal_scale=0.15,
     ),
     "hf_perlin_noise2": HfPerlinNoiseTerrainCfg(
       proportion=0.10,
       height_range=(0.0, 0.08),
+      horizontal_scale=0.15,
     ),
   },
   add_lights=True,
@@ -232,7 +237,7 @@ def make_velocity_env_cfg() -> ManagerBasedRlEnvCfg:
   commands: dict[str, CommandTermCfg] = {
     "twist": UniformVelocityCommandCfg(
       entity_name="robot",
-      resampling_time_range=(3.0, 8.0),
+      resampling_time_range=(10.0, 10.0),
       rel_standing_envs=0.05,
       heading_command=True,
       heading_control_stiffness=0.5,
@@ -261,15 +266,14 @@ def make_velocity_env_cfg() -> ManagerBasedRlEnvCfg:
           "z": (0.0, 0.0),
           "yaw": (-3.14, 3.14),
         },
-        # Randomize initial base velocity, matching HIMLoco's uniform(−0.5, 0.5)
-        # across all 6 DOF (lin_vel xyz + ang_vel rpy).
+        # Go1 init state: zero velocity on reset.
         "velocity_range": {
-          "x":     (-0.5, 0.5),
-          "y":     (-0.5, 0.5),
-          "z":     (-0.5, 0.5),
-          "roll":  (-0.5, 0.5),
-          "pitch": (-0.5, 0.5),
-          "yaw":   (-0.5, 0.5),
+          "x":     (0.0, 0.0),
+          "y":     (0.0, 0.0),
+          "z":     (0.0, 0.0),
+          "roll":  (0.0, 0.0),
+          "pitch": (0.0, 0.0),
+          "yaw":   (0.0, 0.0),
         },
       },
     ),
@@ -288,15 +292,11 @@ def make_velocity_env_cfg() -> ManagerBasedRlEnvCfg:
     "push_robot": EventTermCfg(
       func=mdp.push_by_setting_velocity,
       mode="interval",
-      interval_range_s=(5.0, 6.0),
+      interval_range_s=(16.0, 16.0),
       params={
         "velocity_range": {
-          "x": (-0.5, 0.5),
-          "y": (-0.5, 0.5),
-          "z": (-0.4, 0.4),
-          "roll": (-0.52, 0.52),
-          "pitch": (-0.52, 0.52),
-          "yaw": (-0.78, 0.78),
+          "x": (-1.0, 1.0),
+          "y": (-1.0, 1.0),
         },
       },
     ),
@@ -306,7 +306,7 @@ def make_velocity_env_cfg() -> ManagerBasedRlEnvCfg:
       params={
         "asset_cfg": SceneEntityCfg("robot", geom_names=()),  # Set per-robot.
         "operation": "abs",
-        "ranges": (0.3, 1.6),
+        "ranges": (0.2, 1.25),
         "shared_random": True,  # All foot geoms share the same friction.
       },
     ),
@@ -315,7 +315,7 @@ def make_velocity_env_cfg() -> ManagerBasedRlEnvCfg:
       func=dr.encoder_bias,
       params={
         "asset_cfg": SceneEntityCfg("robot"),
-        "bias_range": (-0.015, 0.015),
+        "bias_range": (0.0, 0.0),   # Go1 has no encoder_bias DR.
       },
     ),
     "base_com": EventTermCfg(
@@ -357,6 +357,17 @@ def make_velocity_env_cfg() -> ManagerBasedRlEnvCfg:
         "operation": "scale",
       },
     ),
+    # Apply random external force on base body every ~0.04s (Go1: ±30N every 8 sim steps).
+    "external_force": EventTermCfg(
+      func=envs_mdp.apply_external_force_torque,
+      mode="interval",
+      interval_range_s=(0.04, 0.04),
+      params={
+        "force_range": (-30.0, 30.0),
+        "torque_range": (0.0, 0.0),
+        "asset_cfg": SceneEntityCfg("robot", body_names=("base",)),  # Set per-robot if needed.
+      },
+    ),
   }
 
   ##
@@ -366,51 +377,67 @@ def make_velocity_env_cfg() -> ManagerBasedRlEnvCfg:
   rewards = {
     "track_linear_velocity": RewardTermCfg(
       func=mdp.track_linear_velocity,
-      weight=1.5,
+      weight=1.0,
       params={"command_name": "twist", "std": math.sqrt(0.25)},
     ),
     "track_angular_velocity": RewardTermCfg(
       func=mdp.track_angular_velocity,
-      weight=1.0,
-      params={"command_name": "twist", "std": math.sqrt(0.5)},
+      weight=0.5,
+      params={"command_name": "twist", "std": math.sqrt(0.25)},
     ),
+    "lin_vel_z_l2": RewardTermCfg(func=mdp.lin_vel_z_l2, weight=-2.0),
     "body_orientation_l2": RewardTermCfg(
       func=mdp.body_orientation_l2,
-      weight=-1.0,
+      weight=-0.2,
       params={"asset_cfg": SceneEntityCfg("robot", body_names=())},  # Set per-robot.
-    ),
-    "pose": RewardTermCfg(
-      func=mdp.variable_posture,
-      weight=1.0,
-      params={
-        "asset_cfg": SceneEntityCfg("robot", joint_names=".*"),
-        "command_name": "twist",
-        "std_standing": {},  # Set per-robot.
-        "std_walking": {},  # Set per-robot.
-        "std_running": {},  # Set per-robot.
-        "walking_threshold": 0.1,
-        "running_threshold": 1.5,
-      },
     ),
     "body_ang_vel": RewardTermCfg(
       func=mdp.body_angular_velocity_penalty,
-      weight=-0.05,  # Override per-robot
+      weight=-0.05,
       params={"asset_cfg": SceneEntityCfg("robot", body_names=())},  # Set per-robot.
     ),
-    "is_terminated": RewardTermCfg(func=mdp.is_terminated, weight=-1.0),
     "joint_acc_l2": RewardTermCfg(func=mdp.joint_acc_l2, weight=-2.5e-7),
-    "joint_pos_limits": RewardTermCfg(func=mdp.joint_pos_limits, weight=-1.0),
-    "action_rate_l2": RewardTermCfg(func=mdp.action_rate_l2, weight=-0.01),
     "joint_power": RewardTermCfg(
       func=mdp.electrical_power_cost,
       weight=-2e-5,
       params={"asset_cfg": SceneEntityCfg("robot", joint_names=".*")},
     ),
+    "base_height_l2": RewardTermCfg(
+      func=mdp.base_height_l2,
+      weight=-1.0,
+      params={"target_height": 0.30},
+    ),
+    "foot_clearance": RewardTermCfg(
+      func=mdp.feet_clearance,
+      weight=-0.01,
+      params={
+        "target_height": 0.10,
+        "command_name": "twist",
+        "command_threshold": 0.1,
+        "asset_cfg": SceneEntityCfg("robot", site_names=()),  # Set per-robot.
+      },
+    ),
+    "action_rate_l2": RewardTermCfg(func=mdp.action_rate_l2, weight=-0.01),
+    "smoothness": RewardTermCfg(func=mdp.smoothness, weight=-0.01),
+    # --- Boying-specific rewards disabled for Go1 parity (kept for future toggle) ---
+    "pose": RewardTermCfg(
+      func=mdp.variable_posture,
+      weight=0.0,
+      params={
+        "asset_cfg": SceneEntityCfg("robot", joint_names=".*"),
+        "command_name": "twist",
+        "std_standing": {},  # Set per-robot.
+        "std_walking": {},   # Set per-robot.
+        "std_running": {},   # Set per-robot.
+        "walking_threshold": 0.1,
+        "running_threshold": 1.5,
+      },
+    ),
     "energy_efficiency": RewardTermCfg(
       func=mdp.energy_efficiency,
-      weight=0.5,
+      weight=0.0,
       params={
-        "asset_cfg": SceneEntityCfg("robot", joint_names=".*", site_names=()),  # site_names set per-robot
+        "asset_cfg": SceneEntityCfg("robot", joint_names=".*", site_names=()),
         "command_name": "twist",
         "sigma_x": 300.0,
         "sigma_z": 150.0,
@@ -419,29 +446,19 @@ def make_velocity_env_cfg() -> ManagerBasedRlEnvCfg:
         "slip_scale": 0.5,
       },
     ),
-    "foot_clearance": RewardTermCfg(
-      func=mdp.feet_clearance,
-      weight=-0.15,
-      params={
-        "target_height": 0.10,
-        "command_name": "twist",
-        "command_threshold": 0.1,
-        "asset_cfg": SceneEntityCfg("robot", site_names=()),  # Set per-robot.
-      },
-    ),
     "foot_slip": RewardTermCfg(
       func=mdp.feet_slip,
-      weight=-0.5,
+      weight=0.0,
       params={
         "sensor_name": "feet_ground_contact",
         "command_name": "twist",
         "command_threshold": 0.1,
-        "asset_cfg": SceneEntityCfg("robot", site_names=()),  # Set per-robot.
+        "asset_cfg": SceneEntityCfg("robot", site_names=()),
       },
     ),
     "soft_landing": RewardTermCfg(
       func=mdp.soft_landing,
-      weight=-1e-3,
+      weight=0.0,
       params={
         "sensor_name": "feet_ground_contact",
         "command_name": "twist",
@@ -450,13 +467,15 @@ def make_velocity_env_cfg() -> ManagerBasedRlEnvCfg:
     ),
     "stand_still": RewardTermCfg(
       func=mdp.stand_still,
-      weight=-1.0,
+      weight=0.0,
       params={
         "command_name": "twist",
         "command_threshold": 0.1,
         "asset_cfg": SceneEntityCfg("robot", joint_names=".*"),
       },
     ),
+    "joint_pos_limits": RewardTermCfg(func=mdp.joint_pos_limits, weight=0.0),
+    "is_terminated": RewardTermCfg(func=mdp.is_terminated, weight=0.0),
   }
 
   ##
@@ -478,7 +497,7 @@ def make_velocity_env_cfg() -> ManagerBasedRlEnvCfg:
   curriculum = {
     "terrain_levels": CurriculumTermCfg(
       func=mdp.terrain_levels_vel,
-      params={"command_name": "twist", "max_level_per_episode": 0.3},
+      params={"command_name": "twist", "max_level_per_episode": 1.0},
     ),
     "command_vel": CurriculumTermCfg(
       func=mdp.commands_vel_him,
