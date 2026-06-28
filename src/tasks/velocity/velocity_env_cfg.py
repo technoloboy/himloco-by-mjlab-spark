@@ -451,7 +451,7 @@ def make_velocity_env_cfg() -> ManagerBasedRlEnvCfg:
       func=mdp.feet_clearance,
       weight=-0.01,
       params={
-        "target_height": 0.10,
+        "target_height": -0.20,  # body frame: feet 20cm below base (HIMLoco parity)
         "command_name": "twist",
         "command_threshold": 0.1,
         "asset_cfg": SceneEntityCfg("robot", site_names=()),  # Set per-robot.
@@ -459,6 +459,13 @@ def make_velocity_env_cfg() -> ManagerBasedRlEnvCfg:
     ),
     "action_rate_l2": RewardTermCfg(func=mdp.action_rate_l2, weight=-0.01),
     "smoothness": RewardTermCfg(func=mdp.smoothness, weight=-0.01),
+    "hip_joint_deviation": RewardTermCfg(
+      func=mdp.hip_joint_deviation_l2,
+      weight=-0.05,  # Mild hip adduction penalty (Walk-These-Ways inspired)
+      params={
+        "asset_cfg": SceneEntityCfg("robot", joint_names=(".*_hip_joint",)),
+      },
+    ),
     # weight=0 — kept for per-robot override (go2/a2/boying use pose/foot_slip)
     "pose": RewardTermCfg(
       func=mdp.variable_posture,

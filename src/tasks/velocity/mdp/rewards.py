@@ -163,13 +163,43 @@ def feet_clearance(
   command_threshold: float = 0.1,
   asset_cfg: SceneEntityCfg = _DEFAULT_ASSET_CFG,
 ) -> torch.Tensor:
-  """Penalize deviation from target clearance height, weighted by foot velocity."""
+  """Penalize foot clearance deviation in body frame (HIMLoco parity).
+
+  Transforms foot positions/velocities from world frame to base body frame
+  via root_link orientation inverse. Computes |z_b - target| × ||v_xy_b||,
+  promoting consistent foot height relative to base (robust on slopes/stairs).
+
+  target_height is in body frame z (typically -0.20m: feet 20cm below base).
+  """
   asset: Entity = env.scene[asset_cfg.name]
-  foot_z = asset.data.site_pos_w[:, asset_cfg.site_ids, 2]  # [B, N]
-  foot_vel_xy = asset.data.site_lin_vel_w[:, asset_cfg.site_ids, :2]  # [B, N, 2]
-  vel_norm = torch.norm(foot_vel_xy, dim=-1)  # [B, N]
-  delta = torch.abs(foot_z - target_height)  # [B, N]
-  cost = torch.sum(delta * vel_norm, dim=1)  # [B]
+
+  # World-frame foot pose and velocity
+  foot_pos_w = asset.data.site_pos_w[:, asset_cfg.site_ids, :]      # [B, N, 3]
+  foot_vel_w = asset.data.site_lin_vel_w[:, asset_cfg.site_ids, :]  # [B, N, 3]
+
+  # Base pose in world frame
+  base_pos_w = asset.data.root_link_pos_w        # [B, 3]
+  base_quat_w = asset.data.root_link_quat_w      # [B, 4]
+
+  # Translate foot positions to base origin
+  foot_pos_translated = foot_pos_w - base_pos_w.unsqueeze(1)  # [B, N, 3]
+
+  # Expand quat to per-foot, then rotate world → body frame
+  N = foot_pos_translated.shape[1]
+  quat_expanded = base_quat_w.unsqueeze(1).expand(-1, N, -1).reshape(-1, 4)
+  foot_pos_b = quat_apply_inverse(
+    quat_expanded, foot_pos_translated.reshape(-1, 3)
+  ).reshape(-1, N, 3)
+  foot_vel_b = quat_apply_inverse(
+    quat_expanded, foot_vel_w.reshape(-1, 3)
+  ).reshape(-1, N, 3)
+
+  # Cost: |z_body - target| × ||v_xy_body||
+  foot_z_b = foot_pos_b[:, :, 2]                 # [B, N]
+  foot_vel_xy_b = foot_vel_b[:, :, :2]           # [B, N, 2]
+  delta = torch.abs(foot_z_b - target_height)    # [B, N]
+  vel_norm = torch.norm(foot_vel_xy_b, dim=-1)   # [B, N]
+  cost = torch.sum(delta * vel_norm, dim=1)      # [B]
   cost = cost.clamp(max=2.0)  # prevent gradient spikes on rough terrain
   if command_name is not None:
     command = env.command_manager.get_command(command_name)
@@ -527,4 +557,21 @@ class smoothness:
         cost = torch.sum(torch.square(diff), dim=1).clamp(max=10.0)
         self.prev_prev_action = a_prev.clone()
         return cost
+
+
+def hip_joint_deviation_l2(
+    env: "ManagerBasedRlEnv",
+    asset_cfg: SceneEntityCfg = _DEFAULT_ASSET_CFG,
+) -> torch.Tensor:
+    """Penalize hip joint deviation from default position (continuous).
+
+    Mild posture regularization (Walk-These-Ways style) — discourages
+    hip adduction (legs collapsing inward). Active at all times regardless
+    of command. Used with weight ≈ -0.05 for gentle constraint.
+    """
+    asset: Entity = env.scene[asset_cfg.name]
+    current_pos = asset.data.joint_pos[:, asset_cfg.joint_ids]            # [B, N_hip]
+    default_pos = asset.data.default_joint_pos[:, asset_cfg.joint_ids]    # [B, N_hip]
+    deviation = current_pos - default_pos                                  # [B, N_hip]
+    return torch.sum(torch.square(deviation), dim=1)                       # [B]
 
