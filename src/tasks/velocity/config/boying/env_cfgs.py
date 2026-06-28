@@ -19,7 +19,7 @@ def boying_rough_env_cfg(play: bool = False) -> ManagerBasedRlEnvCfg:
 
   cfg.sim.mujoco.ccd_iterations = 500
   cfg.sim.contact_sensor_maxmatch = 500
-  cfg.sim.nconmax = 256  # boying has many collision geoms; set large enough margin
+  cfg.sim.nconmax = 1024  # was 256, raised for L5 hfield collision overflow
 
   cfg.scene.entities = {"robot": get_boying_robot_cfg()}
 
