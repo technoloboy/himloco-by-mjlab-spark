@@ -73,9 +73,15 @@ BOYING_ACTUATOR_CALF = BuiltinPositionActuatorCfg(
 INIT_STATE = EntityCfg.InitialStateCfg(
   pos=(0.0, 0.0, 0.35),
   joint_pos={
-    ".*hip_joint":   0.0,
-    ".*thigh_joint": 0.7,
-    ".*calf_joint":  -1.63
+    "FL_hip_joint":    0.10,
+    "FR_hip_joint":   -0.10,
+    "RL_hip_joint":    0.10,
+    "RR_hip_joint":   -0.10,
+    "FL_thigh_joint":  0.80,
+    "FR_thigh_joint":  0.80,
+    "RL_thigh_joint":  0.90,
+    "RR_thigh_joint":  0.90,
+    ".*calf_joint":   -1.70,
   },
   joint_vel={".*": 0.0},
 )
