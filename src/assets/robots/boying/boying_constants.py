@@ -81,7 +81,10 @@ INIT_STATE = EntityCfg.InitialStateCfg(
     "FR_thigh_joint":  0.80,
     "RL_thigh_joint":  0.90,
     "RR_thigh_joint":  0.90,
-    ".*calf_joint":   -1.70,
+    "FL_calf_joint":  -1.80,
+    "FR_calf_joint":  -1.80,
+    "RL_calf_joint":  -1.70,
+    "RR_calf_joint":  -1.70,
   },
   joint_vel={".*": 0.0},
 )
