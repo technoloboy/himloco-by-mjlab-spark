@@ -533,11 +533,30 @@ def lin_vel_z_l2(
 def base_height_l2(
     env: "ManagerBasedRlEnv",
     target_height: float,
+    sensor_name: str | None = None,
     asset_cfg: SceneEntityCfg = _DEFAULT_ASSET_CFG,
 ) -> torch.Tensor:
-    """Penalize squared deviation from target base height (Go1 base_height reward)."""
+    """Penalize squared deviation from target base height (Go1 base_height reward).
+
+    When ``sensor_name`` is None (flat terrain), the absolute world-frame base
+    height is used. When ``sensor_name`` names a height-scan RayCastSensor
+    (rough terrain), the base height is measured *relative to the terrain
+    directly beneath the robot* (root_z minus the mean of the ray-hit terrain
+    heights). This is the legged_gym/HIMLoco convention: it prevents the term
+    from penalizing the robot for legitimately climbing onto steps/obstacles
+    (where absolute base_z rises with the terrain).
+    """
     asset: Entity = env.scene[asset_cfg.name]
     base_z = asset.data.root_link_pos_w[:, 2]
+    if sensor_name is not None:
+        sensor = env.scene[sensor_name]
+        # Mean terrain height under the robot from valid ray hits.
+        hit_z = sensor.data.hit_pos_w[..., 2]          # [B, N]
+        valid = sensor.data.distances >= 0             # [B, N], exclude misses
+        valid_f = valid.float()
+        denom = valid_f.sum(dim=1).clamp(min=1.0)
+        terrain_z = (hit_z * valid_f).sum(dim=1) / denom
+        base_z = base_z - terrain_z
     return torch.square(base_z - target_height)
 
 

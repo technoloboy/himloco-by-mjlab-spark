@@ -106,6 +106,17 @@ def boying_rough_env_cfg(play: bool = False) -> ManagerBasedRlEnvCfg:
   cfg.rewards["foot_clearance"].params["asset_cfg"].site_names = site_names
   cfg.rewards["foot_slip"].params["asset_cfg"].site_names = site_names
 
+  # base_height: measure relative to the terrain beneath the robot (height_scan),
+  # so climbing onto steps/obstacles is not penalized. target 0.30 → 0.28 to match
+  # Boying's true FK standing height (~0.281m, base above feet at nominal pose).
+  cfg.rewards["base_height_l2"].params["sensor_name"] = "terrain_scan"
+  cfg.rewards["base_height_l2"].params["target_height"] = 0.28
+
+  # hip deviation: relax -0.15 → -0.05 (HIMLoco/default magnitude). The stronger
+  # pull constrained the lateral re-stepping/hip-swing needed to balance on rough
+  # terrain; symmetry is already covered by action_symmetry_l2.
+  cfg.rewards["hip_joint_deviation"].weight = -0.05
+
   cfg.terminations["illegal_contact"] = TerminationTermCfg(
     func=mdp.illegal_contact,
     params={"sensor_name": base_head_ground_cfg.name, "force_threshold": 1.0},
@@ -149,6 +160,10 @@ def boying_flat_env_cfg(play: bool = False) -> ManagerBasedRlEnvCfg:
   )
   del cfg.observations["actor"].terms["height_scan"]
   del cfg.observations["critic"].terms["height_scan"]
+
+  # Flat terrain has no terrain_scan sensor: revert base_height to absolute
+  # world height (target 0.28 from the rough override still applies).
+  cfg.rewards["base_height_l2"].params["sensor_name"] = None
 
   cfg.curriculum.pop("terrain_levels", None)
 
