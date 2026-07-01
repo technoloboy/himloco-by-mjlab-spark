@@ -72,7 +72,7 @@ class HIMOnnxPolicy:
         self.input_size: int = inp.shape[1]
 
         # Read HIM dims from ONNX metadata if available (written by HIMVelocityOnPolicyRunner).
-        meta = {p.key: p.value for p in self.session.get_modelmeta().custom_metadata_map.items()}
+        meta = dict(self.session.get_modelmeta().custom_metadata_map)
         if "him_num_one_step_obs" in meta and "him_history_length" in meta:
             self.num_one_step_obs: int = int(meta["him_num_one_step_obs"])
             self.history_length: int   = int(meta["him_history_length"])
