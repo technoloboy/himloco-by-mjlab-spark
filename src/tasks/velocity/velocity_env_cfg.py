@@ -70,15 +70,15 @@ _ROUGH_TERRAIN_CFG = TerrainGeneratorCfg(
     ),
     "pyramid_stairs": BoxPyramidStairsTerrainCfg(
       proportion=0.15,
-      step_height_range=(0.05, 0.20),
-      step_width=0.3,
+      step_height_range=(0.05, 0.15),  # was (0.05, 0.20): lower for Boying (28cm stand height)
+      step_width=0.5,                  # was 0.3: wider tread → 3 steps, more foothold room
       platform_width=3.0,
       border_width=1.0,
     ),
     "pyramid_stairs_inv": BoxInvertedPyramidStairsTerrainCfg(
       proportion=0.15,
-      step_height_range=(0.05, 0.20),
-      step_width=0.3,
+      step_height_range=(0.05, 0.15),  # was (0.05, 0.20)
+      step_width=0.5,                  # was 0.3
       platform_width=3.0,
       border_width=1.0,
     ),
