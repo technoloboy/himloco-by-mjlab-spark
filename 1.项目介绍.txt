@@ -594,7 +594,7 @@ HIMLoco 项目整体介绍
 
 训练
 # 粗糙地形（推荐，对应 Boying-HIM-Rough）
-python scripts/train.py Boying-HIM-Rough --env.scene.num-envs=4096 --phase
+python scripts/train.py Boying-HIM-Rough --env.scene.num-envs=4096 
 
 # 平地
 python scripts/train.py Boying-HIM-Flat --env.scene.num-envs=4096
@@ -610,8 +610,8 @@ python scripts/train.py Boying-HIM-Rough --gpu-ids 0 1 --env.scene.num-envs=4096
 python scripts/train.py Boying-HIM-Rough \
     --env.scene.num-envs=1024 \
     --agent.resume=True \
-    --agent.load_run="2026-06-29_01-40-02" \
-    --agent.load_checkpoint="model_9000.pt" 
+    --agent.load_run="2026-06-30_19-47-01" \
+    --agent.load_checkpoint="model_6000.pt" 
 
 1180效果不错
 onnx_file

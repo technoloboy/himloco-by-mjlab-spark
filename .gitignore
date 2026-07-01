@@ -16,3 +16,6 @@ simulate/build
 __pycache__/
 *.pyc
 *.pyo
+# Research materials (local only, not pushed)
+资料/
+资料.zip
