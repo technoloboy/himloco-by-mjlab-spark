@@ -348,7 +348,7 @@ def make_velocity_env_cfg() -> ManagerBasedRlEnvCfg:
       },
     ),
     "foot_friction": EventTermCfg(
-      mode="startup",
+      mode="reset",
       func=dr.geom_friction,
       params={
         "asset_cfg": SceneEntityCfg("robot", geom_names=()),  # Set per-robot.
@@ -366,7 +366,7 @@ def make_velocity_env_cfg() -> ManagerBasedRlEnvCfg:
       },
     ),
     "base_com": EventTermCfg(
-      mode="startup",
+      mode="reset",
       func=dr.body_com_offset,
       params={
         "asset_cfg": SceneEntityCfg("robot", body_names=()),  # Set per-robot.
@@ -465,7 +465,7 @@ def make_velocity_env_cfg() -> ManagerBasedRlEnvCfg:
       },
     ),
     "action_rate_l2": RewardTermCfg(func=mdp.action_rate_l2, weight=-0.01),
-    "action_symmetry_l2": RewardTermCfg(func=mdp.action_symmetry_l2, weight=-0.015),
+    # "action_symmetry_l2": RewardTermCfg(func=mdp.action_symmetry_l2, weight=-0.015),
     "smoothness": RewardTermCfg(func=mdp.smoothness, weight=-0.01),
     "hip_joint_deviation": RewardTermCfg(
       func=mdp.hip_joint_deviation_l2,
