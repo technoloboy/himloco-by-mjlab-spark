@@ -3,6 +3,7 @@
 from src.assets.robots import get_boying_robot_cfg
 from mjlab.envs import ManagerBasedRlEnvCfg
 from mjlab.envs import mdp as envs_mdp
+from mjlab.envs.mdp import dr
 from mjlab.envs.mdp.actions import JointPositionActionCfg
 from mjlab.managers import TerminationTermCfg
 from mjlab.managers.event_manager import EventTermCfg
@@ -105,6 +106,22 @@ def boying_rough_env_cfg(play: bool = False) -> ManagerBasedRlEnvCfg:
   cfg.events["foot_friction"].params["asset_cfg"].geom_names = geom_names
   cfg.events["base_com"].params["asset_cfg"].body_names = ("base",)
   cfg.events["payload_mass"].params["asset_cfg"].body_names = ("base",)
+
+  # Leg-link mass/inertia randomization (mirrors go2_rl_robotlab's
+  # randomize_rigid_body_mass_others: scale non-base links by 0.9~1.1x).
+  # Use pseudo_inertia (not body_mass) so mass AND inertia scale together for a
+  # physically consistent density change. alpha_range=(-0.05, 0.05) gives a mass
+  # scale of e^(2*alpha) in [e^-0.1, e^0.1] = [0.905, 1.105] ~ [0.9, 1.1].
+  cfg.events["leg_mass"] = EventTermCfg(
+    mode="startup",
+    func=dr.pseudo_inertia,
+    params={
+      "asset_cfg": SceneEntityCfg(
+        "robot", body_names=(".*_hip", ".*_thigh", ".*_calf")
+      ),
+      "alpha_range": (-0.05, 0.05),
+    },
+  )
 
   # Pose reward: boying hip limits are tighter (±0.681 rad) than Go2 (±1.047 rad),
   # so we use the same relative std as Go2.

@@ -366,15 +366,15 @@ def make_velocity_env_cfg() -> ManagerBasedRlEnvCfg:
       },
     ),
     "base_com": EventTermCfg(
-      mode="reset",
+      mode="startup",
       func=dr.body_com_offset,
       params={
         "asset_cfg": SceneEntityCfg("robot", body_names=()),  # Set per-robot.
         "operation": "add",
         "ranges": {
-          0: (-0.05, 0.05),
-          1: (-0.05, 0.05),
-          2: (-0.05, 0.05),
+          0: (-0.03, 0.03),
+          1: (-0.03, 0.03),
+          2: (-0.03, 0.03),
         },
       },
     ),
@@ -443,7 +443,10 @@ def make_velocity_env_cfg() -> ManagerBasedRlEnvCfg:
       weight=-0.05,
       params={"asset_cfg": SceneEntityCfg("robot", body_names=())},  # Set per-robot.
     ),
-    "joint_acc_l2": RewardTermCfg(func=mdp.joint_acc_l2, weight=-2.5e-7),
+    "joint_acc_l2": RewardTermCfg(
+      func=mdp.joint_acc_l2, 
+      weight=-2.5e-7
+      ),
     "joint_power": RewardTermCfg(
       func=mdp.electrical_power_cost,
       weight=-2e-5,
