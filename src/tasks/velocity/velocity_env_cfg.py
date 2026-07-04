@@ -514,6 +514,7 @@ def make_velocity_env_cfg() -> ManagerBasedRlEnvCfg:
         "slip_scale": 0.5,
       },
     ),
+    "is_terminated": RewardTermCfg(func=envs_mdp.is_terminated, weight=-5.0),
   }
 
   ##
