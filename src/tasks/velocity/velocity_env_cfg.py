@@ -348,7 +348,7 @@ def make_velocity_env_cfg() -> ManagerBasedRlEnvCfg:
       },
     ),
     "foot_friction": EventTermCfg(
-      mode="reset",
+      mode="startup",
       func=dr.geom_friction,
       params={
         "asset_cfg": SceneEntityCfg("robot", geom_names=()),  # Set per-robot.
@@ -493,7 +493,7 @@ def make_velocity_env_cfg() -> ManagerBasedRlEnvCfg:
     ),
     "foot_slip": RewardTermCfg(
       func=mdp.feet_slip,
-      weight=0.0,
+      weight=-0.1,
       params={
         "sensor_name": "feet_ground_contact",
         "command_name": "twist",
@@ -548,7 +548,7 @@ def make_velocity_env_cfg() -> ManagerBasedRlEnvCfg:
       },
     ),
     # Reward-weight curricula (MoE-CTS gradual_reward_weight_modification).
-    # Steps = iteration × num_steps_per_env(100). Stepwise approx of linear ramp.
+    # Steps = iteration × num_steps_per_env(24). Stepwise approx of linear ramp.
     # lin_vel_z_l2: -2.0 → 0 over first ~1500 iter (early anti-bounce, then release
     # so the robot dares to climb; uprightness gate + other terms keep z controlled).
     "reward_weight_lin_vel_z": CurriculumTermCfg(

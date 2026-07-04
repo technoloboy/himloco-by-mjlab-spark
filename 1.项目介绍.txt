@@ -601,7 +601,7 @@ python scripts/train.py Boying-HIM-Flat --env.scene.num-envs=4096
 
 Play（可视化验证，替换 checkpoint 路径）
 python scripts/play.py Boying-HIM-Rough \
-  --checkpoint_file=logs/rsl_rl/boying_him_velocity/2026-07-01_16-00-33/model_6480.pt --no-terminations=True
+  --checkpoint_file=logs/rsl_rl/boying_him_velocity/2026-07-03_01-30-47/model_49999.pt --no-terminations=True
 
 多卡的话加 --gpu-ids 0 1：
 python scripts/train.py Boying-HIM-Rough --gpu-ids 0 1 --env.scene.num-envs=4096
@@ -621,7 +621,7 @@ python export_him_onnx.py --checkpoint logs/rsl_rl/boying_him_velocity/2026-06-2
     --onnx_file logs/rsl_rl/boying_him_velocity/2026-07-01_16-00-33/policy.onnx
 
  python scripts/play_keyboard.py Boying-HIM-Rough \
-     --checkpoint_file=logs/rsl_rl/boying_him_velocity/2026-06-26_14-45-58/model_9380.pt 
+     --checkpoint_file=logs/rsl_rl/boying_him_velocity/2026-07-03_01-30-47/model_49999.pt 
 
 =============================修改===========================
 ============================修改后===========================                                                                                                                                                                             
