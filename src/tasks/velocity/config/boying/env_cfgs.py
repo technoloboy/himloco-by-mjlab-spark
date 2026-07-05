@@ -144,9 +144,7 @@ def boying_rough_env_cfg(play: bool = False) -> ManagerBasedRlEnvCfg:
   cfg.rewards["body_orientation_l2"].params["asset_cfg"].body_names = ("base",)
   cfg.rewards["body_ang_vel"].params["asset_cfg"].body_names = ("base",)
   cfg.rewards["foot_clearance"].params["asset_cfg"].site_names = site_names
-  cfg.rewards["pose"].weight = 0.1
   cfg.rewards["foot_slip"].params["asset_cfg"].site_names = site_names
-  cfg.rewards["foot_slip"].weight = -0.1
 
   # base_height: measure relative to the terrain beneath the robot (height_scan),
   # so climbing onto steps/obstacles is not penalized. target 0.30 → 0.28 to match

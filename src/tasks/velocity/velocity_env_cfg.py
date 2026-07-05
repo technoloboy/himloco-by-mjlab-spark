@@ -493,7 +493,7 @@ def make_velocity_env_cfg() -> ManagerBasedRlEnvCfg:
     ),
     "foot_slip": RewardTermCfg(
       func=mdp.feet_slip,
-      weight=-0.1,
+      weight=0.0,
       params={
         "sensor_name": "feet_ground_contact",
         "command_name": "twist",
@@ -514,7 +514,7 @@ def make_velocity_env_cfg() -> ManagerBasedRlEnvCfg:
         "slip_scale": 0.5,
       },
     ),
-    "is_terminated": RewardTermCfg(func=envs_mdp.is_terminated, weight=-5.0),
+    "is_terminated": RewardTermCfg(func=envs_mdp.is_terminated, weight=0.0),
   }
 
   ##
