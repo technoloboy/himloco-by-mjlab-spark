@@ -594,14 +594,14 @@ HIMLoco 项目整体介绍
 
 训练
 # 粗糙地形（推荐，对应 Boying-HIM-Rough）
-python scripts/train.py Boying-HIM-Rough --env.scene.num-envs=4096 
+python scripts/train.py Boying-HIM-Rough --env.scene.num-envs=1024
 
 # 平地
 python scripts/train.py Boying-HIM-Flat --env.scene.num-envs=4096
 
 Play（可视化验证，替换 checkpoint 路径）
 python scripts/play.py Boying-HIM-Rough \
-  --checkpoint_file=logs/rsl_rl/boying_him_velocity/2026-07-03_01-30-47/model_49999.pt --no-terminations=True
+  --checkpoint_file=logs/rsl_rl/boying_him_velocity/2026-07-05_13-00-53/model_14640.pt --no-terminations=True
 
 多卡的话加 --gpu-ids 0 1：
 python scripts/train.py Boying-HIM-Rough --gpu-ids 0 1 --env.scene.num-envs=4096
