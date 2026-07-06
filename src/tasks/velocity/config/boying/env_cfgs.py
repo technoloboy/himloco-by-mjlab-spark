@@ -56,8 +56,8 @@ def boying_rough_env_cfg(play: bool = False) -> ManagerBasedRlEnvCfg:
       mode="geom",
       entity="robot",
       pattern=(
-        "base1_collision", "base2_collision",
-        "head1_collision", "head2_collision",
+        "base1_collision",
+        "head2_collision",
       ),
     ),
     secondary=ContactMatch(mode="body", pattern="terrain"),
@@ -145,14 +145,14 @@ def boying_rough_env_cfg(play: bool = False) -> ManagerBasedRlEnvCfg:
   cfg.rewards["body_ang_vel"].params["asset_cfg"].body_names = ("base",)
   cfg.rewards["foot_clearance"].params["asset_cfg"].site_names = site_names
   cfg.rewards["foot_slip"].params["asset_cfg"].site_names = site_names
-  cfg.rewards["foot_slip"].weight = -0.25
-  cfg.rewards["pose"].weight = 0.2
+  # cfg.rewards["foot_slip"].weight = -0.25
+  # cfg.rewards["pose"].weight = 0.2
 
   # base_height: measure relative to the terrain beneath the robot (height_scan),
   # so climbing onto steps/obstacles is not penalized. target 0.30 → 0.28 to match
   # Boying's true FK standing height (~0.281m, base above feet at nominal pose).
   cfg.rewards["base_height_l2"].params["sensor_name"] = "terrain_scan"
-  cfg.rewards["base_height_l2"].params["target_height"] = 0.28
+  cfg.rewards["base_height_l2"].params["target_height"] = 0.35
 
   # hip deviation: relax -0.15 → -0.05 (HIMLoco/default magnitude). The stronger
   # pull constrained the lateral re-stepping/hip-swing needed to balance on rough
@@ -172,7 +172,7 @@ def boying_rough_env_cfg(play: bool = False) -> ManagerBasedRlEnvCfg:
     func=boying_mdp.feet_regulation,
     weight=-0.05,
     params={
-      "base_height_target": 0.28,
+      "base_height_target": 0.35,
       "sensor_name": "terrain_scan",
       "asset_cfg": SceneEntityCfg("robot", site_names=site_names),
     },
