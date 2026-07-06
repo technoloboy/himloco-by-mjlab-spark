@@ -455,7 +455,7 @@ def make_velocity_env_cfg() -> ManagerBasedRlEnvCfg:
     "base_height_l2": RewardTermCfg(
       func=mdp.base_height_l2,
       weight=-1.0,
-      params={"target_height": 0.35},
+      params={"target_height": 0.30},
     ),
     "foot_clearance": RewardTermCfg(
       func=mdp.feet_clearance,
