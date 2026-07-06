@@ -92,7 +92,7 @@ def boying_rough_env_cfg(play: bool = False) -> ManagerBasedRlEnvCfg:
 
   if cfg.scene.terrain is not None and cfg.scene.terrain.terrain_generator is not None:
     cfg.scene.terrain.terrain_generator.curriculum = True
-    cfg.scene.terrain.max_init_terrain_level = 5  # HIMLoco default: start up to level 5
+    cfg.scene.terrain.max_init_terrain_level = 2  # reduced from 5 to prevent early collapse
 
   joint_pos_action = cfg.actions["joint_pos"]
   assert isinstance(joint_pos_action, JointPositionActionCfg)
