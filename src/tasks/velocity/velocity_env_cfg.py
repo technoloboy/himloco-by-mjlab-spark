@@ -445,17 +445,17 @@ def make_velocity_env_cfg() -> ManagerBasedRlEnvCfg:
     ),
     "joint_acc_l2": RewardTermCfg(
       func=mdp.joint_acc_l2, 
-      weight=-2.5e-7
+      weight=-5e-7
       ),
     "joint_power": RewardTermCfg(
       func=mdp.electrical_power_cost,
-      weight=-2e-5,
+      weight=-3e-5,
       params={"asset_cfg": SceneEntityCfg("robot", joint_names=".*")},
     ),
     "base_height_l2": RewardTermCfg(
       func=mdp.base_height_l2,
       weight=-1.0,
-      params={"target_height": 0.30},
+      params={"target_height": 0.35},
     ),
     "foot_clearance": RewardTermCfg(
       func=mdp.feet_clearance,
