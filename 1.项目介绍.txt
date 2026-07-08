@@ -601,7 +601,7 @@ python scripts/train.py Boying-HIM-Flat --env.scene.num-envs=4096
 
 Play（可视化验证，替换 checkpoint 路径）
 python scripts/play.py Boying-HIM-Rough \
-  --checkpoint_file=logs/rsl_rl/boying_him_velocity/2026-07-05_13-00-53/model_14640.pt --no-terminations=True
+  --checkpoint_file=logs/rsl_rl/boying_him_velocity/2026-07-06_22-10-36/model_4400.pt --no-terminations=True
 
 多卡的话加 --gpu-ids 0 1：
 python scripts/train.py Boying-HIM-Rough --gpu-ids 0 1 --env.scene.num-envs=4096
@@ -622,6 +622,9 @@ python export_him_onnx.py --checkpoint logs/rsl_rl/boying_him_velocity/2026-06-2
 
  python scripts/play_keyboard.py Boying-HIM-Rough \
      --checkpoint_file=logs/rsl_rl/boying_him_velocity/2026-07-03_01-30-47/model_49999.pt 
+
+ python scripts/play_keyboard.py Boying-HIM-Rough \
+     --checkpoint_file=logs/rsl_rl/boying_him_velocity/wkl-b860m/model_20240.pt 
 
 =============================修改===========================
 ============================修改后===========================                                                                                                                                                                             
@@ -658,3 +661,10 @@ tensorboard --logdir logs/rsl_rl/boying_him_velocity
 
 
 修改foot_friction和base_com两个dr项的触发时机，也改成reset时候触发
+
+筛选
+python scripts/play_keyboard.py Boying-HIM-Rough      --checkpoint_file=logs/rsl_rl/boying_him_velocity/2026-07-02_03-24-43/model_3700.pt  //点头
+python scripts/play_keyboard.py Boying-HIM-Rough      --checkpoint_file=logs/rsl_rl/boying_him_velocity/2026-07-03_01-30-47/model_49999.pt  //能奔跑
+python scripts/play_keyboard.py Boying-HIM-Rough      --checkpoint_file=logs/rsl_rl/boying_him_velocity/2026-07-06_03-17-38/model_20840.pt  //步态跳跃
+
+python scripts/play_keyboard.py Boying-HIM-Rough      --checkpoint_file=logs/rsl_rl/boying_him_velocity/2026-07-07_05-10-06/model_42800.pt  //依旧三只脚
