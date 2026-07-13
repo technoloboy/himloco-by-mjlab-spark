@@ -107,6 +107,27 @@ def boying_rough_env_cfg(play: bool = False) -> ManagerBasedRlEnvCfg:
   cfg.events["base_com"].params["asset_cfg"].body_names = ("base",)
   cfg.events["payload_mass"].params["asset_cfg"].body_names = ("base",)
 
+  # Leg-link CoM displacement randomization.
+  # HIMLoco randomizes CoM displacement per-reset with ±5cm; go2_rl_robotlab uses
+  # startup ±3cm on base only. Here we apply per-reset ±2cm on all leg links
+  # (hip/thigh/calf) — more conservative than HIMLoco because leg links are smaller
+  # and ±2cm already represents a large fraction of their geometry.
+  cfg.events["leg_com"] = EventTermCfg(
+    mode="reset",
+    func=dr.body_com_offset,
+    params={
+      "asset_cfg": SceneEntityCfg(
+        "robot", body_names=(".*_hip", ".*_thigh", ".*_calf")
+      ),
+      "operation": "add",
+      "ranges": {
+        0: (-0.02, 0.02),   # x ±2cm
+        1: (-0.02, 0.02),   # y ±2cm
+        2: (-0.02, 0.02),   # z ±2cm
+      },
+    },
+  )
+
   # Leg-link mass/inertia randomization (mirrors go2_rl_robotlab's
   # randomize_rigid_body_mass_others: scale non-base links by 0.9~1.1x).
   # Use pseudo_inertia (not body_mass) so mass AND inertia scale together for a
