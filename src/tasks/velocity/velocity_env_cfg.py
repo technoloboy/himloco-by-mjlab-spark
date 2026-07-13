@@ -366,7 +366,7 @@ def make_velocity_env_cfg() -> ManagerBasedRlEnvCfg:
       },
     ),
     "base_com": EventTermCfg(
-      mode="startup",
+      mode="reset",
       func=dr.body_com_offset,
       params={
         "asset_cfg": SceneEntityCfg("robot", body_names=()),  # Set per-robot.
