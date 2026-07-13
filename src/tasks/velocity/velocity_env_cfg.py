@@ -477,15 +477,6 @@ def make_velocity_env_cfg() -> ManagerBasedRlEnvCfg:
         "asset_cfg": SceneEntityCfg("robot", joint_names=(".*_hip_joint",)),
       },
     ),
-    "stand_still": RewardTermCfg(
-      func=mdp.stand_still,
-      weight=-0.1,
-      params={
-        "command_name": "twist",
-        "command_threshold": 0.1,
-        "asset_cfg": SceneEntityCfg("robot", joint_names=".*"),
-      },
-    ),
     # weight=0 — kept for per-robot override (go2/a2/boying use pose/foot_slip)
     "pose": RewardTermCfg(
       func=mdp.variable_posture,
@@ -559,8 +550,8 @@ def make_velocity_env_cfg() -> ManagerBasedRlEnvCfg:
     ),
     # Reward-weight curricula (MoE-CTS gradual_reward_weight_modification).
     # Steps = iteration × num_steps_per_env(24). Stepwise approx of linear ramp.
-    # lin_vel_z_l2: -2.0 → -0.2 over first ~6250 iter (early anti-bounce, then keep
-    # a residual penalty of -0.2 so z-bobbing is always penalized even on rough terrain).
+    # lin_vel_z_l2: -2.0 → 0 over first ~6250 iter (early anti-bounce, then release
+    # so the robot dares to climb; uprightness gate + other terms keep z controlled).
     "reward_weight_lin_vel_z": CurriculumTermCfg(
       func=mdp.reward_weight,
       params={
@@ -569,7 +560,7 @@ def make_velocity_env_cfg() -> ManagerBasedRlEnvCfg:
           {"step": 0, "weight": -2.0},
           {"step": 50000, "weight": -1.3},
           {"step": 100000, "weight": -0.6},
-          {"step": 150000, "weight": -0.2},
+          {"step": 150000, "weight": 0.0},
         ],
       },
     ),
