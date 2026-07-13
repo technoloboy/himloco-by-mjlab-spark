@@ -668,3 +668,13 @@ python scripts/play_keyboard.py Boying-HIM-Rough      --checkpoint_file=logs/rsl
 python scripts/play_keyboard.py Boying-HIM-Rough      --checkpoint_file=logs/rsl_rl/boying_him_velocity/2026-07-06_03-17-38/model_20840.pt  //步态跳跃
 
 python scripts/play_keyboard.py Boying-HIM-Rough      --checkpoint_file=logs/rsl_rl/boying_him_velocity/2026-07-07_05-10-06/model_42800.pt  //依旧三只脚
+
+python scripts/play_keyboard.py Boying-HIM-Rough      --checkpoint_file=logs/rsl_rl/boying_him_velocity/2026-07-08_15-29-06/model_38480.pt  //机器人上下浮动
+
+python scripts/play_keyboard.py Boying-HIM-Rough      --checkpoint_file=logs/rsl_rl/boying_him_velocity/2026-07-09_23-38-25/model_49999.pt  //机器人,四条腿交错有力，步态正常，最好的
+
+stand_still weight=-0.1， lin_vel_z_l2 课程最终值 0.0 → -0.2。
+python scripts/play_keyboard.py Boying-HIM-Rough      --checkpoint_file=logs/rsl_rl/boying_him_velocity/2026-07-12_00-20-50/model_49999.pt  //步态退化,不对称性增加，也能越障
+python scripts/play_keyboard.py Boying-HIM-Rough      --checkpoint_file=logs/rsl_rl/boying_him_velocity/2026-07-12_00-20-50/model_21240.pt  //步态也不错，也能过障碍
+
+
