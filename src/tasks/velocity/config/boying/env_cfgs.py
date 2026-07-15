@@ -166,7 +166,7 @@ def boying_rough_env_cfg(play: bool = False) -> ManagerBasedRlEnvCfg:
   cfg.rewards["body_ang_vel"].params["asset_cfg"].body_names = ("base",)
   cfg.rewards["foot_clearance"].params["asset_cfg"].site_names = site_names
   cfg.rewards["foot_slip"].params["asset_cfg"].site_names = site_names
-  cfg.rewards["foot_slip"].weight = -0.25
+  cfg.rewards["foot_slip"].weight = -0.35  # -0.25 → -0.35: harder slip penalty to reduce single-diagonal overload
   cfg.rewards["pose"].weight = 0.2
 
   # base_height: measure relative to the terrain beneath the robot (height_scan),
@@ -176,10 +176,11 @@ def boying_rough_env_cfg(play: bool = False) -> ManagerBasedRlEnvCfg:
   cfg.rewards["base_height_l2"].params["sensor_name"] = "terrain_scan"
   cfg.rewards["base_height_l2"].params["target_height"] = 0.30
 
-  # hip deviation: relax -0.15 → -0.05 (HIMLoco/default magnitude). The stronger
-  # pull constrained the lateral re-stepping/hip-swing needed to balance on rough
-  # terrain; symmetry is already covered by action_symmetry_l2.
-  cfg.rewards["hip_joint_deviation"].weight = -0.05
+  # hip deviation: -0.05 → -0.10. Previous comment ("relax for lateral re-stepping")
+  # no longer applies since action_symmetry_l2 is not used; a stronger pull is needed
+  # to prevent the policy from collapsing to a single-diagonal gait by keeping hips
+  # near centre and forcing all four legs to contribute.
+  cfg.rewards["hip_joint_deviation"].weight = -0.10
 
   # ── MoE-CTS (RSS2026) inspired obstacle-traversal improvements (Boying only) ──
   # (1) Uprightness gate: swap 3 penalty terms to gated versions so the huge
@@ -189,10 +190,12 @@ def boying_rough_env_cfg(play: bool = False) -> ManagerBasedRlEnvCfg:
   cfg.rewards["body_ang_vel"].func = boying_mdp.body_angular_velocity_penalty_gated
 
   # (2) feet_regulation: penalize fast horizontal foot motion near ground → high
-  #     stepping gait for blind obstacle traversal (weight -0.05, MoE-CTS parity).
+  #     stepping gait for blind obstacle traversal.
+  #     weight -0.05 → -0.10: stronger lift incentive to counteract foot-dragging
+  #     observed in gait analysis (FL+RR overused, FR+RL barely lifting).
   cfg.rewards["feet_regulation"] = RewardTermCfg(
     func=boying_mdp.feet_regulation,
-    weight=-0.05,
+    weight=-0.10,
     params={
       "base_height_target": 0.30,
       "sensor_name": "terrain_scan",
@@ -226,6 +229,13 @@ def boying_rough_env_cfg(play: bool = False) -> ManagerBasedRlEnvCfg:
       "asset_cfg": SceneEntityCfg("robot", joint_names=(".*_(thigh|calf)_joint",)),
     },
   )
+
+  # (3d) energy_efficiency: reward power-efficient locomotion with slip correction.
+  #      Activated (0.0 → 0.05) to incentivise a regular four-legged gait; when
+  #      only two legs work the per-leg power is higher and the slip factor lowers
+  #      the reward, providing a gentle four-leg-use signal without hard symmetry.
+  cfg.rewards["energy_efficiency"].weight = 0.05
+  cfg.rewards["energy_efficiency"].params["asset_cfg"].site_names = site_names
 
   cfg.terminations["illegal_contact"] = TerminationTermCfg(
     func=mdp.illegal_contact,
