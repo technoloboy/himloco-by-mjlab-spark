@@ -331,7 +331,7 @@ def make_velocity_env_cfg() -> ManagerBasedRlEnvCfg:
       mode="reset",
       params={
         # Mirrors HIMLoco: dof_pos = default_dof_pos * uniform(0.5, 1.5).
-        "position_range": (0.5, 1.5),
+        "position_range": (0.8, 1.2),
         "velocity_range": (0.0, 0.0),  # HIMLoco zeros joint velocities on reset.
         "asset_cfg": SceneEntityCfg("robot", joint_names=(".*",)),
       },
@@ -575,7 +575,7 @@ def make_velocity_env_cfg() -> ManagerBasedRlEnvCfg:
           {"step": 125000, "weight": -3.0},
           {"step": 250000, "weight": -5.0},
           {"step": 375000, "weight": -7.5},
-          {"step": 500000, "weight": -10.0},
+          {"step": 425000, "weight": -10.0},
         ],
       },
     ),

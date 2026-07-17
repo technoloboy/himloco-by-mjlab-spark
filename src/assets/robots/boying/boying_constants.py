@@ -33,7 +33,7 @@ def get_spec() -> mujoco.MjSpec:
 
 
 ##
-# Actuator config (from 关节名轴MJCF限位rad力矩限位.txt).
+# Actuator config 
 #
 # All joints share the same kp/kd/armature; calf has a higher torque limit.
 ##
@@ -46,6 +46,7 @@ BOYING_ACTUATOR_HIP = BuiltinPositionActuatorCfg(
   damping=4.5,
   effort_limit=60.0,
   armature=0.0396,
+  frictionloss=1.6,
 )
 BOYING_ACTUATOR_THIGH = BuiltinPositionActuatorCfg(
   target_names_expr=(
@@ -55,6 +56,7 @@ BOYING_ACTUATOR_THIGH = BuiltinPositionActuatorCfg(
   damping=4.5,
   effort_limit=60.0,
   armature=0.0396,
+  frictionloss=1.6,
 )
 BOYING_ACTUATOR_CALF = BuiltinPositionActuatorCfg(
   target_names_expr=(
@@ -64,6 +66,7 @@ BOYING_ACTUATOR_CALF = BuiltinPositionActuatorCfg(
   damping=4.5,
   effort_limit=90.0,
   armature=0.0396,
+  frictionloss=1.6,
 )
 
 ##
