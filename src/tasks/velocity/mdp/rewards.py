@@ -595,6 +595,39 @@ def hip_joint_deviation_l2(
     return torch.sum(torch.square(deviation), dim=1)                       # [B]
 
 
+def hip_joint_deviation_l1(
+    env: "ManagerBasedRlEnv",
+    command_name: str,
+    command_threshold: float = 0.1,
+    stand_still_scale: float = 1.0,
+    asset_cfg: SceneEntityCfg = _DEFAULT_ASSET_CFG,
+) -> torch.Tensor:
+    """Penalize hip joint deviation from default using L1 norm (go2_rl_robotlab style).
+
+    Mirrors go2_rl_robotlab's ``hip_pos_penalty_l1``:
+      - Uses L1 norm (sum of absolute deviations) rather than L2.
+      - Trigger condition checks only lateral (vy) and yaw (wz) commands
+        — forward velocity (vx) is intentionally excluded, matching go2
+        behaviour where straight-line running is allowed to relax the hips.
+      - When neither vy nor wz exceeds ``command_threshold`` the penalty is
+        scaled by ``stand_still_scale`` (default 1.0 → same magnitude).
+    """
+    asset: Entity = env.scene[asset_cfg.name]
+    command = env.command_manager.get_command(command_name)  # [B, 3] vx,vy,wz
+    assert command is not None
+    # Only vy (index 1) and wz (index 2) trigger the penalty — skip vx.
+    lateral_yaw = command[:, [1, 2]]                                       # [B, 2]
+    cmd_active = torch.any(torch.abs(lateral_yaw) > command_threshold, dim=1)  # [B]
+
+    current_pos = asset.data.joint_pos[:, asset_cfg.joint_ids]            # [B, N_hip]
+    default_pos = asset.data.default_joint_pos[:, asset_cfg.joint_ids]    # [B, N_hip]
+    deviation_l1 = torch.linalg.norm(
+        current_pos - default_pos, dim=1, ord=1
+    )                                                                       # [B]
+
+    return torch.where(cmd_active, deviation_l1, stand_still_scale * deviation_l1)
+
+
 def action_symmetry_l2(
   env: ManagerBasedRlEnv,
   asset_cfg: SceneEntityCfg = _DEFAULT_ASSET_CFG,

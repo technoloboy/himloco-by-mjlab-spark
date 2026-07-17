@@ -144,30 +144,11 @@ def boying_rough_env_cfg(play: bool = False) -> ManagerBasedRlEnvCfg:
     },
   )
 
-  # Pose reward: boying hip limits are tighter (±0.681 rad) than Go2 (±1.047 rad),
-  # so we use the same relative std as Go2.
-  cfg.rewards["pose"].params["std_standing"] = {
-    r".*(FR|FL|RR|RL)_hip_joint":   0.05,
-    r".*(FR|FL|RR|RL)_thigh_joint": 0.1,
-    r".*(FR|FL|RR|RL)_calf_joint":  0.15,
-  }
-  cfg.rewards["pose"].params["std_walking"] = {
-    r".*(FR|FL|RR|RL)_hip_joint":   0.15,
-    r".*(FR|FL|RR|RL)_thigh_joint": 0.35,
-    r".*(FR|FL|RR|RL)_calf_joint":  0.5,
-  }
-  cfg.rewards["pose"].params["std_running"] = {
-    r".*(FR|FL|RR|RL)_hip_joint":   0.15,
-    r".*(FR|FL|RR|RL)_thigh_joint": 0.35,
-    r".*(FR|FL|RR|RL)_calf_joint":  0.5,
-  }
-
   cfg.rewards["body_orientation_l2"].params["asset_cfg"].body_names = ("base",)
   cfg.rewards["body_ang_vel"].params["asset_cfg"].body_names = ("base",)
   cfg.rewards["foot_clearance"].params["asset_cfg"].site_names = site_names
   cfg.rewards["foot_slip"].params["asset_cfg"].site_names = site_names
   cfg.rewards["foot_slip"].weight = -0.35  # -0.25 → -0.35: harder slip penalty to reduce single-diagonal overload
-  cfg.rewards["pose"].weight = 0.2
 
   # base_height: measure relative to the terrain beneath the robot (height_scan),
   # target_height = 0.30: FK-computed standing height is 0.297~0.315m depending
@@ -176,11 +157,11 @@ def boying_rough_env_cfg(play: bool = False) -> ManagerBasedRlEnvCfg:
   cfg.rewards["base_height_l2"].params["sensor_name"] = "terrain_scan"
   cfg.rewards["base_height_l2"].params["target_height"] = 0.30
 
-  # hip deviation: -0.05 → -0.10. Previous comment ("relax for lateral re-stepping")
-  # no longer applies since action_symmetry_l2 is not used; a stronger pull is needed
-  # to prevent the policy from collapsing to a single-diagonal gait by keeping hips
-  # near centre and forcing all four legs to contribute.
-  cfg.rewards["hip_joint_deviation"].weight = -0.10
+  # hip_joint_deviation: switched to L1 norm with vy/wz-only trigger (go2_rl_robotlab
+  # style). vx is excluded so straight-line running can relax the hips freely.
+  # weight kept at -0.10 (tighter than go2's -0.05 to compensate for Boying's
+  # narrower hip range ±0.681 rad vs Go2's ±1.047 rad).
+  cfg.rewards["hip_joint_deviation"].params["command_name"] = "twist"
 
   # ── MoE-CTS (RSS2026) inspired obstacle-traversal improvements (Boying only) ──
   # (1) Uprightness gate: swap 3 penalty terms to gated versions so the huge

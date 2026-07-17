@@ -471,13 +471,17 @@ def make_velocity_env_cfg() -> ManagerBasedRlEnvCfg:
     # "action_symmetry_l2": RewardTermCfg(func=mdp.action_symmetry_l2, weight=-0.015),
     "smoothness": RewardTermCfg(func=mdp.smoothness, weight=-0.01),
     "hip_joint_deviation": RewardTermCfg(
-      func=mdp.hip_joint_deviation_l2,
-      weight=-0.15,  # was -0.05, increased to stronger constrain hip adduction
+      func=mdp.hip_joint_deviation_l1,
+      weight=-0.10,
       params={
+        "command_name": "twist",
+        "command_threshold": 0.1,
+        "stand_still_scale": 1.0,
         "asset_cfg": SceneEntityCfg("robot", joint_names=(".*_hip_joint",)),
       },
     ),
-    # weight=0 — kept for per-robot override (go2/a2/boying use pose/foot_slip)
+    # pose: disabled by default (weight=0). Boying uses hip_joint_deviation_l1 +
+    # joint_pos_penalty_l1 instead of variable_posture (go2_rl_robotlab style).
     "pose": RewardTermCfg(
       func=mdp.variable_posture,
       weight=0.0,
