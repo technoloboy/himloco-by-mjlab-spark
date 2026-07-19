@@ -548,7 +548,7 @@ def make_velocity_env_cfg() -> ManagerBasedRlEnvCfg:
         "command_name": "twist",
         "reward_name": "track_linear_velocity",
         "max_curriculum": 2.0,
-        "expand_step": 0.1,  # 0.2 → 0.1: finer velocity curriculum steps to reduce reward spike at ±2 m/s transition
+        "expand_step": 0.2,
         "tracking_threshold": 0.8,
       },
     ),

@@ -148,7 +148,7 @@ def boying_rough_env_cfg(play: bool = False) -> ManagerBasedRlEnvCfg:
   cfg.rewards["body_ang_vel"].params["asset_cfg"].body_names = ("base",)
   cfg.rewards["foot_clearance"].params["asset_cfg"].site_names = site_names
   cfg.rewards["foot_slip"].params["asset_cfg"].site_names = site_names
-  cfg.rewards["foot_slip"].weight = -0.35  # -0.25 → -0.35: harder slip penalty to reduce single-diagonal overload
+  cfg.rewards["foot_slip"].weight = -0.25
 
   # base_height: measure relative to the terrain beneath the robot (height_scan),
   # target_height = 0.30: FK-computed standing height is 0.297~0.315m depending
