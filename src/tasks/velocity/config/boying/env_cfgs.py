@@ -147,8 +147,10 @@ def boying_rough_env_cfg(play: bool = False) -> ManagerBasedRlEnvCfg:
   cfg.rewards["body_orientation_l2"].params["asset_cfg"].body_names = ("base",)
   cfg.rewards["body_ang_vel"].params["asset_cfg"].body_names = ("base",)
   cfg.rewards["foot_clearance"].params["asset_cfg"].site_names = site_names
-  cfg.rewards["foot_slip"].params["asset_cfg"].site_names = site_names
-  cfg.rewards["foot_slip"].weight = -0.25
+  # foot_slip removed: energy_efficiency already penalises slip via its built-in
+  # slip_factor (slip_sensor_name="feet_ground_contact"), so a separate foot_slip
+  # penalty would double-count the same signal.
+  cfg.rewards["foot_slip"].weight = 0.0
 
   # base_height: measure relative to the terrain beneath the robot (height_scan),
   # target_height = 0.30: FK-computed standing height is 0.297~0.315m depending
@@ -157,10 +159,11 @@ def boying_rough_env_cfg(play: bool = False) -> ManagerBasedRlEnvCfg:
   cfg.rewards["base_height_l2"].params["sensor_name"] = "terrain_scan"
   cfg.rewards["base_height_l2"].params["target_height"] = 0.30
 
-  # hip_joint_deviation: switched to L1 norm with vy/wz-only trigger (go2_rl_robotlab
-  # style). vx is excluded so straight-line running can relax the hips freely.
-  # weight kept at -0.10 (tighter than go2's -0.05 to compensate for Boying's
-  # narrower hip range ±0.681 rad vs Go2's ±1.047 rad).
+  # hip_joint_deviation: L1 norm, vy/wz-only trigger (go2_rl_robotlab style).
+  # weight -0.10 → -0.05: data analysis shows -0.10 raises the actual penalty
+  # ~10× above baseline (L1 numerics + wider trigger coverage), suppressing
+  # useful hip motion and preventing policy entropy from converging.
+  cfg.rewards["hip_joint_deviation"].weight = -0.05
   cfg.rewards["hip_joint_deviation"].params["command_name"] = "twist"
 
   # ── MoE-CTS (RSS2026) inspired obstacle-traversal improvements (Boying only) ──
@@ -192,10 +195,13 @@ def boying_rough_env_cfg(play: bool = False) -> ManagerBasedRlEnvCfg:
     weight=-0.05,
     params={"sensor_name": "thigh_calf_contact", "threshold": 5.0},
   )
-  # (3b) joint_pos_limits: penalize joints hitting soft limits (weight -2.0).
+  # (3b) joint_pos_limits: penalize joints hitting soft limits.
+  # weight -2.0 → -0.3: at -2.0 this term spikes heavily during high-speed
+  # stair traversal (joints need large excursions), triggering Value Loss
+  # instability. -0.3 keeps the soft-limit signal without dominating.
   cfg.rewards["joint_pos_limits"] = RewardTermCfg(
     func=boying_mdp.joint_pos_limits,
-    weight=-2.0,
+    weight=-0.3,
     params={"asset_cfg": SceneEntityCfg("robot", joint_names=(".*_joint",))},
   )
   # (3c) joint_pos_penalty_l1: command-aware thigh/calf deviation (weight -0.01).

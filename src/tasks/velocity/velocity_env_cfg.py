@@ -339,7 +339,7 @@ def make_velocity_env_cfg() -> ManagerBasedRlEnvCfg:
     "push_robot": EventTermCfg(
       func=mdp.push_by_setting_velocity,
       mode="interval",
-      interval_range_s=(16.0, 16.0),
+      interval_range_s=(8.0, 8.0),  # 16s → 8s: more push events per episode
       params={
         "velocity_range": {
           "x": (-1.0, 1.0),
@@ -362,7 +362,7 @@ def make_velocity_env_cfg() -> ManagerBasedRlEnvCfg:
       func=dr.encoder_bias,
       params={
         "asset_cfg": SceneEntityCfg("robot"),
-        "bias_range": (0.0, 0.0),   # Go1 has no encoder_bias DR.
+        "bias_range": (-0.035, 0.035),  # ±0.035 rad per joint: sim-to-real gap
       },
     ),
     "base_com": EventTermCfg(
@@ -548,7 +548,7 @@ def make_velocity_env_cfg() -> ManagerBasedRlEnvCfg:
         "command_name": "twist",
         "reward_name": "track_linear_velocity",
         "max_curriculum": 2.0,
-        "expand_step": 0.2,
+        "expand_step": 0.15,  # 0.2 → 0.15: smoother velocity curriculum expansion
         "tracking_threshold": 0.8,
       },
     ),
