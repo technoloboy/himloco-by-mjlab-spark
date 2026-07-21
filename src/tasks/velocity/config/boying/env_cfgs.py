@@ -153,9 +153,9 @@ def boying_rough_env_cfg(play: bool = False) -> ManagerBasedRlEnvCfg:
   cfg.rewards["foot_slip"].weight = 0.0
 
   # base_height: measure relative to the terrain beneath the robot (height_scan),
-  # target_height = 0.30: FK-computed standing height is 0.297~0.315m depending
-  # on leg (FL/FR thigh=0.8 → 0.297m, RL/RR thigh=0.9 → 0.315m); 0.30 is a
-  # reasonable midpoint, lower than spawn height (0.35m) and avoids tip-toe behavior.
+  # target_height = 0.30: FK-computed standing height with FL/FR thigh=0.7, RL/RR
+  # thigh=0.8, calf=-1.5 is ~0.283~0.298m; 0.30 remains a reasonable midpoint,
+  # slightly above nominal and below spawn height (0.35m).
   cfg.rewards["base_height_l2"].params["sensor_name"] = "terrain_scan"
   cfg.rewards["base_height_l2"].params["target_height"] = 0.30
 

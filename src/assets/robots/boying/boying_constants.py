@@ -42,31 +42,28 @@ BOYING_ACTUATOR_HIP = BuiltinPositionActuatorCfg(
   target_names_expr=(
     ".*hip_joint",
   ),
-  stiffness=60.0,
-  damping=4.5,
+  stiffness=50.0,
+  damping=2.25,
   effort_limit=60.0,
   armature=0.0396,
-  frictionloss=1.6,
 )
 BOYING_ACTUATOR_THIGH = BuiltinPositionActuatorCfg(
   target_names_expr=(
     ".*thigh_joint",
   ),
-  stiffness=60.0,
-  damping=4.5,
+  stiffness=50.0,
+  damping=2.25,
   effort_limit=60.0,
   armature=0.0396,
-  frictionloss=1.6,
 )
 BOYING_ACTUATOR_CALF = BuiltinPositionActuatorCfg(
   target_names_expr=(
     ".*calf_joint",
   ),
-  stiffness=60.0,
-  damping=4.5,
+  stiffness=50.0,
+  damping=2.25,
   effort_limit=90.0,
   armature=0.0396,
-  frictionloss=1.6,
 )
 
 ##
@@ -80,14 +77,14 @@ INIT_STATE = EntityCfg.InitialStateCfg(
     "FR_hip_joint":   -0.10,
     "RL_hip_joint":    0.10,
     "RR_hip_joint":   -0.10,
-    "FL_thigh_joint":  0.80,
-    "FR_thigh_joint":  0.80,
-    "RL_thigh_joint":  0.90,
-    "RR_thigh_joint":  0.90,
-    "FL_calf_joint":  -1.80,
-    "FR_calf_joint":  -1.80,
-    "RL_calf_joint":  -1.70,
-    "RR_calf_joint":  -1.70,
+    "FL_thigh_joint":  0.70,
+    "FR_thigh_joint":  0.70,
+    "RL_thigh_joint":  0.80,
+    "RR_thigh_joint":  0.80,
+    "FL_calf_joint":  -1.50,
+    "FR_calf_joint":  -1.50,
+    "RL_calf_joint":  -1.50,
+    "RR_calf_joint":  -1.50,
   },
   joint_vel={".*": 0.0},
 )
