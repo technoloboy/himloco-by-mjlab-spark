@@ -33,9 +33,11 @@ def get_spec() -> mujoco.MjSpec:
 
 
 ##
-# Actuator config 
+# Actuator config
 #
-# All joints share the same kp/kd/armature; calf has a higher torque limit.
+# All joints share the same kp/kd/armature/frictionloss; calf has a higher torque limit.
+# stiffness=50, damping=2.25 (kp/kd reduced from 60/4.5 for softer compliance)
+# frictionloss=1.6 (hardware measured joint friction, keeps sim-to-real gap small)
 ##
 
 BOYING_ACTUATOR_HIP = BuiltinPositionActuatorCfg(
@@ -70,7 +72,13 @@ BOYING_ACTUATOR_CALF = BuiltinPositionActuatorCfg(
 )
 
 ##
-# Keyframes / initial state (from 关节名轴MJCF限位rad力矩限位.txt).
+# Keyframes / initial state.
+#
+# Standing posture (action=0 target):
+#   hip:   FL/RL=+0.10, FR/RR=-0.10 rad  (slight outward splay)
+#   thigh: FL/FR=0.70, RL/RR=0.80 rad   (rear legs slightly more bent)
+#   calf:  all=-1.50 rad                 (unified, reduced from -1.80/-1.70)
+# FK standing height: ~0.283m (FL/FR) ~ 0.298m (RL/RR); target_height=0.30.
 ##
 
 INIT_STATE = EntityCfg.InitialStateCfg(
